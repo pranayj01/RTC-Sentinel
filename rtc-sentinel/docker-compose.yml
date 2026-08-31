@@ -1,0 +1,101 @@
+name: rtc-sentinel
+
+services:
+  client:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/client.Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    networks: [rtc-network]
+
+  server:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/server.Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rtc_sentinel}:${POSTGRES_PASSWORD:-rtc_sentinel}@postgres:5432/${POSTGRES_DB:-rtc_sentinel}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-development-access-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-development-refresh-secret-change-me}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [rtc-network]
+
+  ml-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/ml-service.Dockerfile
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [rtc-network]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rtc_sentinel}
+      POSTGRES_USER: ${POSTGRES_USER:-rtc_sentinel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rtc_sentinel}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rtc_sentinel} -d ${POSTGRES_DB:-rtc_sentinel}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [rtc-network]
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [rtc-network]
+
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    volumes:
+      - ./infrastructure/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "49160-49200:49160-49200/udp"
+    networks: [rtc-network]
+
+volumes:
+  postgres-data:
+  redis-data:
+
+networks:
+  rtc-network:
+    driver: bridge
