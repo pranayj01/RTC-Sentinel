@@ -24,6 +24,8 @@ Endpoints:
 
 Both health endpoints return `{"status":"ok"}`. The Node process verifies PostgreSQL and Redis connectivity before accepting traffic.
 
+Open the client in two browser tabs, create a call in the first, then join its room ID in the second to establish a peer-to-peer audio call.
+
 To verify the Compose stack:
 
 ```bash
@@ -82,4 +84,4 @@ The GitHub Actions workflow runs these gates and starts the complete Compose sta
 - `infrastructure/coturn/` — TURN server configuration
 - `docs/` — architecture and operating notes
 
-Current release: **v0.3.0**
+Current release: **v0.4.0**

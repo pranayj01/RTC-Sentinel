@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+- Add browser microphone capture and peer-to-peer WebRTC audio negotiation.
+- Add create/join room UI, remote audio playback, mute, end-call, and status/error states.
+- Queue ICE candidates until remote descriptions are ready and clean up media on disconnect.
+
 ## 0.3.0
 
 - Add two-peer Socket.IO rooms and lifecycle handling.
