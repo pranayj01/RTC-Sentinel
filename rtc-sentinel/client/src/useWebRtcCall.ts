@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { mediaErrorMessage } from './mediaErrors';
+import { createIceConfiguration, selectedCandidateType } from './iceConfig';
 
 type Status = 'idle' | 'connecting' | 'waiting' | 'connected' | 'ended' | 'error';
 type Ack = { ok: boolean; roomId?: string; error?: string };
 type SignalMessage<T> = { roomId: string; signal: T };
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? `http://${window.location.hostname}:3000`;
+const forceRelay = new URLSearchParams(window.location.search).get('relay') === '1';
+const iceConfiguration = createIceConfiguration(window.location.hostname, {
+  stunUrl: import.meta.env.VITE_STUN_URL,
+  turnUrl: import.meta.env.VITE_TURN_URL,
+  turnTcpUrl: import.meta.env.VITE_TURN_TCP_URL,
+  turnUsername: import.meta.env.VITE_TURN_USERNAME,
+  turnCredential: import.meta.env.VITE_TURN_CREDENTIAL,
+  transportPolicy: import.meta.env.VITE_ICE_TRANSPORT_POLICY as RTCIceTransportPolicy | undefined,
+}, forceRelay);
 
 export interface WebRtcCall {
-  roomId: string; status: Status; statusLabel: string; muted: boolean; error: string;
+  roomId: string; status: Status; statusLabel: string; muted: boolean; error: string; candidateType: string;
   remoteAudioRef: RefObject<HTMLAudioElement | null>;
   createCall(): Promise<void>; joinCall(roomId: string): Promise<void>;
   toggleMute(): void; endCall(): void;
@@ -25,6 +35,7 @@ export function useWebRtcCall(): WebRtcCall {
   const [status, setStatus] = useState<Status>('idle');
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState('');
+  const [candidateType, setCandidateType] = useState('discovering');
 
   const ensureMedia = useCallback(async () => {
     if (streamRef.current) return streamRef.current;
@@ -38,14 +49,22 @@ export function useWebRtcCall(): WebRtcCall {
 
   const ensurePeer = useCallback(async () => {
     if (peerRef.current) return peerRef.current;
-    const stream = await ensureMedia(); const peer = new RTCPeerConnection();
+    const stream = await ensureMedia(); const peer = new RTCPeerConnection(iceConfiguration);
     stream.getTracks().forEach((track) => peer.addTrack(track, stream));
     peer.onicecandidate = ({ candidate }) => {
       if (candidate && roomRef.current) socketRef.current?.emit('ice-candidate', { roomId: roomRef.current, signal: candidate.toJSON() }, () => undefined);
     };
     peer.ontrack = ({ streams }) => { if (remoteAudioRef.current) remoteAudioRef.current.srcObject = streams[0]; };
     peer.onconnectionstatechange = () => {
-      if (peer.connectionState === 'connected') setStatus('connected');
+      if (peer.connectionState === 'connected') {
+        setStatus('connected');
+        const inspect = async (attempt = 0): Promise<void> => {
+          const type = await selectedCandidateType(peer);
+          if (type !== 'unknown' || attempt >= 5) setCandidateType(type);
+          else window.setTimeout(() => void inspect(attempt + 1), 500);
+        };
+        void inspect();
+      }
       if (['failed', 'disconnected'].includes(peer.connectionState)) { setError('Peer connection was lost.'); setStatus('error'); }
       if (peer.connectionState === 'closed') setStatus('ended');
     };
@@ -117,8 +136,8 @@ export function useWebRtcCall(): WebRtcCall {
   const toggleMute = useCallback(() => { const next = !muted; streamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !next; }); setMuted(next); }, [muted]);
   const endCall = useCallback(() => {
     if (roomRef.current) { socketRef.current?.emit('call-end', { roomId: roomRef.current }, () => undefined); socketRef.current?.emit('leave-room', { roomId: roomRef.current }, () => undefined); }
-    roomRef.current = ''; closePeer(); setMuted(false); setStatus('ended');
+    roomRef.current = ''; closePeer(); setMuted(false); setCandidateType('discovering'); setStatus('ended');
   }, [closePeer]);
   const labels: Record<Status, string> = { idle: 'Ready', connecting: 'Connecting', waiting: 'Waiting for peer', connected: 'Connected', ended: 'Ended', error: 'Error' };
-  return { roomId, status, statusLabel: labels[status], muted, error, remoteAudioRef, createCall, joinCall, toggleMute, endCall };
+  return { roomId, status, statusLabel: labels[status], muted, error, candidateType, remoteAudioRef, createCall, joinCall, toggleMute, endCall };
 }

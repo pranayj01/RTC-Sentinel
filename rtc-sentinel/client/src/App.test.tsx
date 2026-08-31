@@ -7,7 +7,7 @@ jest.mock('./useWebRtcCall', () => ({ useWebRtcCall: jest.fn() }));
 const mockCall = useWebRtcCall as jest.MockedFunction<typeof useWebRtcCall>;
 
 const idleCall = {
-  roomId: '', status: 'idle' as const, statusLabel: 'Ready', muted: false, error: '',
+  roomId: '', status: 'idle' as const, statusLabel: 'Ready', muted: false, error: '', candidateType: 'discovering',
   remoteAudioRef: { current: null }, createCall: jest.fn(), joinCall: jest.fn(),
   toggleMute: jest.fn(), endCall: jest.fn(),
 };
@@ -22,9 +22,10 @@ test('offers call creation and room joining', () => {
 });
 
 test('shows active call state and controls', () => {
-  const active = { ...idleCall, roomId: 'ABC123', status: 'connected' as const, statusLabel: 'Connected' };
+  const active = { ...idleCall, roomId: 'ABC123', status: 'connected' as const, statusLabel: 'Connected', candidateType: 'relay' };
   mockCall.mockReturnValue(active); render(<App />);
   expect(screen.getByText('ABC123')).toBeInTheDocument(); expect(screen.getByText('Connected')).toBeInTheDocument();
+  expect(screen.getByText('RELAY')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Mute' })); fireEvent.click(screen.getByRole('button', { name: 'End Call' }));
   expect(active.toggleMute).toHaveBeenCalled(); expect(active.endCall).toHaveBeenCalled();
 });

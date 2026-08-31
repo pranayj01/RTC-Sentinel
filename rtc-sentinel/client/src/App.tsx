@@ -18,7 +18,8 @@ export function App() {
         <div className="room-line"><span>Room</span><strong>{call.roomId}</strong>
           <button className="quiet" onClick={() => void navigator.clipboard.writeText(call.roomId)}>Copy Room ID</button></div>
         <div className="status-grid"><div><span>Microphone</span><strong>{call.muted ? 'MUTED' : 'ON'}</strong></div>
-          <div><span>Call Status</span><strong data-status={call.status}>{call.statusLabel}</strong></div></div>
+          <div><span>Call Status</span><strong data-status={call.status}>{call.statusLabel}</strong></div>
+          <div><span>Network Path</span><strong>{call.candidateType.toUpperCase()}</strong></div></div>
         <div className="controls"><button onClick={call.toggleMute}>{call.muted ? 'Unmute' : 'Mute'}</button>
           <button className="danger" onClick={call.endCall}>End Call</button></div>
       </div>}

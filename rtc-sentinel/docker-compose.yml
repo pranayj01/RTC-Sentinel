@@ -5,6 +5,9 @@ services:
     build:
       context: .
       dockerfile: infrastructure/docker/client.Dockerfile
+      args:
+        VITE_TURN_USERNAME: ${TURN_USERNAME:-rtc-sentinel}
+        VITE_TURN_CREDENTIAL: ${TURN_CREDENTIAL:-local-development-turn-secret}
     ports:
       - "5173:80"
     depends_on:
@@ -83,7 +86,11 @@ services:
 
   coturn:
     image: coturn/coturn:4.6-alpine
-    command: ["-c", "/etc/coturn/turnserver.conf"]
+    command:
+      - -c
+      - /etc/coturn/turnserver.conf
+      - --external-ip=${TURN_EXTERNAL_IP:-127.0.0.1}
+      - --user=${TURN_USERNAME:-rtc-sentinel}:${TURN_CREDENTIAL:-local-development-turn-secret}
     volumes:
       - ./infrastructure/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
     ports:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+- Configure authenticated Coturn service over UDP and TCP.
+- Add browser STUN/TURN ICE configuration and forced-relay mode.
+- Report the selected ICE candidate type using WebRTC statistics.
+- Document local and public-network TURN deployment requirements.
+
 ## 0.4.0
 
 - Add browser microphone capture and peer-to-peer WebRTC audio negotiation.
