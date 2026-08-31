@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Add two-peer Socket.IO rooms and lifecycle handling.
+- Relay SDP offers, SDP answers, ICE candidates, and call lifecycle events.
+- Add signaling integration tests and protocol documentation.
+
 ## 0.2.0
 
 - Add registration, login, refresh, and authenticated-user endpoints.

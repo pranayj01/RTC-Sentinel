@@ -20,6 +20,7 @@ Endpoints:
 - Client: http://localhost:5173
 - Node health: http://localhost:3000/health
 - Python health: http://localhost:8000/health
+- Socket.IO signaling: ws://localhost:3000
 
 Both health endpoints return `{"status":"ok"}`. The Node process verifies PostgreSQL and Redis connectivity before accepting traffic.
 
@@ -81,4 +82,4 @@ The GitHub Actions workflow runs these gates and starts the complete Compose sta
 - `infrastructure/coturn/` — TURN server configuration
 - `docs/` — architecture and operating notes
 
-Current release: **v0.2.0**
+Current release: **v0.3.0**
