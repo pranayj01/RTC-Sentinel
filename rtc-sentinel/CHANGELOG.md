@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0
+
+- Add persisted calls and call participants with a Prisma migration.
+- Add authenticated call creation, detail, history, status, and end endpoints.
+- Enforce private participant access and validated call-state transitions.
+- Add integration coverage for lifecycle, duration, authentication, and authorization.
+
 ## 0.5.0
 
 - Configure authenticated Coturn service over UDP and TCP.

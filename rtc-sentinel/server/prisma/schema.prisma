@@ -22,4 +22,50 @@ model User {
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  callsMade    Call[]   @relation("Caller")
+  callsReceived Call[]  @relation("Receiver")
+  callParticipants CallParticipant[]
+}
+
+enum CallStatus {
+  INITIATED
+  RINGING
+  CONNECTED
+  ENDED
+  REJECTED
+  FAILED
+  MISSED
+}
+
+model Call {
+  id         String            @id @default(cuid())
+  roomId     String
+  callerId   String
+  receiverId String
+  startedAt  DateTime          @default(now())
+  endedAt    DateTime?
+  duration   Int?
+  status     CallStatus        @default(INITIATED)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  caller     User              @relation("Caller", fields: [callerId], references: [id], onDelete: Restrict)
+  receiver   User              @relation("Receiver", fields: [receiverId], references: [id], onDelete: Restrict)
+  participants CallParticipant[]
+
+  @@index([callerId, createdAt])
+  @@index([receiverId, createdAt])
+  @@index([roomId])
+}
+
+model CallParticipant {
+  id       String    @id @default(cuid())
+  callId   String
+  userId   String
+  joinedAt DateTime?
+  leftAt   DateTime?
+  call     Call      @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([callId, userId])
+  @@index([userId])
 }

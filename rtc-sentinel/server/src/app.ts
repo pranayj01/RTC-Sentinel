@@ -4,8 +4,15 @@ import { createApiRouter } from './auth/routes.js';
 import type { UserRepository } from './auth/types.js';
 import { PrismaUserRepository } from './auth/userRepository.js';
 import { prisma } from './dependencies.js';
+import { createCallRouter } from './calls/routes.js';
+import type { CallRepository } from './calls/types.js';
+import { PrismaCallRepository } from './calls/callRepository.js';
 
-export function createApp(users: UserRepository = new PrismaUserRepository(prisma)) {
+export function createApp(
+  users: UserRepository = new PrismaUserRepository(prisma),
+  calls: CallRepository = new PrismaCallRepository(prisma),
+  now: () => Date = () => new Date(),
+) {
   const app = express();
 
   app.disable('x-powered-by');
@@ -13,6 +20,7 @@ export function createApp(users: UserRepository = new PrismaUserRepository(prism
 
   app.get('/health', (_request, response) => response.status(200).json({ status: 'ok' }));
   app.use(createApiRouter(users));
+  app.use(createCallRouter(users, calls, now));
   const errors: ErrorRequestHandler = (error, _request, response, _next) => {
     if (error instanceof ZodError) { response.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid request', details: error.flatten() } }); return; }
     if (error instanceof SyntaxError) { response.status(400).json({ error: { code: 'INVALID_JSON', message: 'Invalid JSON body' } }); return; }
