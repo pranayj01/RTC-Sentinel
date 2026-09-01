@@ -58,11 +58,13 @@ describe('Socket.IO signaling', () => {
   it('creates a room', async () => {
     const client = await connect(); const result = await createRoom(client);
     expect(result).toMatchObject({ ok: true }); expect(result.roomId).toMatch(/^[A-F0-9]{6}$/);
-    expect(signaling.rooms.get(result.roomId!)).toContain(client.id);
+    expect(await signaling.state.getRoomMembers(result.roomId!)).toContain(client.id);
+    expect(await signaling.state.isSocketActive(client.id!)).toBe(true);
   });
 
   it('allows a second client to join', async () => {
-    const { roomId } = await joinedPair(); expect(signaling.rooms.get(roomId)?.size).toBe(2);
+    const { roomId } = await joinedPair(); expect(await signaling.state.getRoomMembers(roomId)).toHaveLength(2);
+    expect(await signaling.state.getCallStatus(roomId)).toBe('RINGING');
   });
 
   it.each([
@@ -81,7 +83,8 @@ describe('Socket.IO signaling', () => {
     const left = new Promise<Record<string, unknown>>((resolve) => first.once('peer-left', resolve));
     const secondId = second.id; second.disconnect();
     await expect(left).resolves.toMatchObject({ roomId, socketId: secondId });
-    expect(signaling.rooms.get(roomId)?.size).toBe(1);
+    expect(await signaling.state.getRoomMembers(roomId)).toHaveLength(1);
+    expect(await signaling.state.isSocketActive(secondId!)).toBe(false);
   });
 
   it('rejects a third user when the room has two peers', async () => {
@@ -95,6 +98,7 @@ describe('Socket.IO signaling', () => {
       const received = new Promise<Record<string, unknown>>((resolve) => second.once(event, resolve));
       expect((await emitAck(first, event, { roomId })).ok).toBe(true);
       await expect(received).resolves.toMatchObject({ roomId, from: first.id });
+      expect(await signaling.state.getCallStatus(roomId)).toBe(event === 'call-start' ? 'CONNECTED' : 'ENDED');
     }
   });
 });

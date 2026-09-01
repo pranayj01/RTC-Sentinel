@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.5
+
+- Move active Socket.IO room membership and reverse socket mappings into Redis.
+- Track active connections and real-time call state with configurable TTLs.
+- Clean up socket and room state on disconnect and preserve two-peer room limits.
+- Add state lifecycle, expiration, restart, and signaling integration tests.
+
 ## 0.6.0
 
 - Add persisted calls and call participants with a Prisma migration.
