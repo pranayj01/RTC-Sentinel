@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.5
+
+- Classify each WebRTC QoS sample as Excellent, Good, Fair, Poor, Critical, or Unknown.
+- Use deterministic RTT, jitter, packet-loss, and bitrate thresholds with the worst dimension controlling the result.
+- Display live quality, score, and limiting factors in the active-call dashboard.
+- Persist authoritative quality labels and scores in PostgreSQL and buffer them in Redis.
+
 ## 0.7.0
 
 - Sample WebRTC audio and network statistics every three seconds in the browser.

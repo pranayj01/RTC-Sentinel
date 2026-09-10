@@ -16,14 +16,14 @@ model ServiceHeartbeat {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  callsMade    Call[]   @relation("Caller")
-  callsReceived Call[]  @relation("Receiver")
+  id               String            @id @default(cuid())
+  name             String
+  email            String            @unique
+  passwordHash     String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  callsMade        Call[]            @relation("Caller")
+  callsReceived    Call[]            @relation("Receiver")
   callParticipants CallParticipant[]
 }
 
@@ -38,18 +38,18 @@ enum CallStatus {
 }
 
 model Call {
-  id         String            @id @default(cuid())
-  roomId     String
-  callerId   String
-  receiverId String
-  startedAt  DateTime          @default(now())
-  endedAt    DateTime?
-  duration   Int?
-  status     CallStatus        @default(INITIATED)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  caller     User              @relation("Caller", fields: [callerId], references: [id], onDelete: Restrict)
-  receiver   User              @relation("Receiver", fields: [receiverId], references: [id], onDelete: Restrict)
+  id           String            @id @default(cuid())
+  roomId       String
+  callerId     String
+  receiverId   String
+  startedAt    DateTime          @default(now())
+  endedAt      DateTime?
+  duration     Int?
+  status       CallStatus        @default(INITIATED)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  caller       User              @relation("Caller", fields: [callerId], references: [id], onDelete: Restrict)
+  receiver     User              @relation("Receiver", fields: [receiverId], references: [id], onDelete: Restrict)
   participants CallParticipant[]
   metrics      CallMetric[]
 
@@ -87,6 +87,8 @@ model CallMetric {
   codec           String?
   audioLevel      Float?
   candidateType   String?
+  quality         String   @default("Unknown")
+  qualityScore    Int?
   call            Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
 
   @@index([callId, timestamp])

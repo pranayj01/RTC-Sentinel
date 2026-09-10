@@ -1,5 +1,7 @@
-export interface QosMetricSample {
-  timestamp: Date;
+export type CallQuality =
+  'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Critical' | 'Unknown';
+
+export interface QosMeasurements {
   rtt: number | null;
   jitter: number | null;
   packetsSent: number;
@@ -14,12 +16,21 @@ export interface QosMetricSample {
   candidateType: string | null;
 }
 
+export interface QosMetricSample extends QosMeasurements {
+  timestamp: Date;
+  quality: CallQuality;
+  qualityScore: number | null;
+}
+
 export interface CallMetricRecord extends QosMetricSample {
   id: string;
   callId: string;
 }
 
 export interface MetricRepository {
-  recordForRoom(roomId: string, sample: QosMetricSample): Promise<CallMetricRecord | null>;
+  recordForRoom(
+    roomId: string,
+    sample: QosMetricSample,
+  ): Promise<CallMetricRecord | null>;
   findForCall(callId: string): Promise<CallMetricRecord[]>;
 }

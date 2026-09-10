@@ -1,10 +1,21 @@
 import { MemoryRealtimeStateStore } from './realtimeState.js';
 
 const metric = {
-  timestamp: new Date('2026-09-11T10:00:00.000Z'), rtt: 80, jitter: 10,
-  packetsSent: 10, packetsReceived: 9, packetsLost: 1, packetLoss: 10,
-  bytesSent: 1000, bytesReceived: 900, bitrate: 50000, codec: 'audio/opus',
-  audioLevel: 0.4, candidateType: 'relay',
+  timestamp: new Date('2026-09-11T10:00:00.000Z'),
+  rtt: 80,
+  jitter: 10,
+  packetsSent: 10,
+  packetsReceived: 9,
+  packetsLost: 1,
+  packetLoss: 10,
+  bytesSent: 1000,
+  bytesReceived: 900,
+  bitrate: 50000,
+  codec: 'audio/opus',
+  audioLevel: 0.4,
+  candidateType: 'relay',
+  quality: 'Critical' as const,
+  qualityScore: 20,
 };
 
 describe('real-time state lifecycle', () => {
@@ -13,7 +24,9 @@ describe('real-time state lifecycle', () => {
     await state.registerSocket('socket-a');
     expect(await state.createRoom('ABC123', 'socket-a')).toBe(true);
 
-    await expect(state.unregisterSocket('socket-a')).resolves.toEqual(['ABC123']);
+    await expect(state.unregisterSocket('socket-a')).resolves.toEqual([
+      'ABC123',
+    ]);
     await expect(state.isSocketActive('socket-a')).resolves.toBe(false);
     await expect(state.getRoomMembers('ABC123')).resolves.toEqual([]);
   });
@@ -53,7 +66,9 @@ describe('real-time state lifecycle', () => {
 
     const afterRestart = new MemoryRealtimeStateStore();
     await expect(afterRestart.getRoomMembers('ABC123')).resolves.toEqual([]);
-    await expect(afterRestart.createRoom('ABC123', 'socket-b')).resolves.toBe(true);
+    await expect(afterRestart.createRoom('ABC123', 'socket-b')).resolves.toBe(
+      true,
+    );
   });
 
   it('buffers recent QoS metrics and expires them', async () => {
