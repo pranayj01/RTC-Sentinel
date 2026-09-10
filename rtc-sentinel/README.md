@@ -1,6 +1,6 @@
 # RTC Sentinel
 
-RTC Sentinel is a WebRTC monitoring platform. Phase 0 establishes the React client, Express API, FastAPI ML service, PostgreSQL, Redis, Coturn, automated tests, and containerized local environment.
+RTC Sentinel is a WebRTC monitoring platform with browser-to-browser audio, Socket.IO signaling, authenticated call storage, Redis real-time state, and live WebRTC QoS metrics. The React, Express, FastAPI, PostgreSQL, Redis, and Coturn services run together through Docker Compose.
 
 ## Prerequisites
 
@@ -25,6 +25,7 @@ Endpoints:
 Both health endpoints return `{"status":"ok"}`. The Node process verifies PostgreSQL and Redis connectivity before accepting traffic.
 
 Open the client in two browser tabs, create a call in the first, then join its room ID in the second to establish a peer-to-peer audio call.
+Once connected, the dashboard samples `RTCPeerConnection.getStats()` every three seconds and displays RTT, jitter, packet loss, bitrate, packets, codec, audio level, and candidate type.
 
 To verify the Compose stack:
 
@@ -84,4 +85,4 @@ The GitHub Actions workflow runs these gates and starts the complete Compose sta
 - `infrastructure/coturn/` — TURN server configuration
 - `docs/` — architecture and operating notes
 
-Current release: **v0.6.5**
+Current release: **v0.7.0**

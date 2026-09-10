@@ -1,5 +1,12 @@
 import { MemoryRealtimeStateStore } from './realtimeState.js';
 
+const metric = {
+  timestamp: new Date('2026-09-11T10:00:00.000Z'), rtt: 80, jitter: 10,
+  packetsSent: 10, packetsReceived: 9, packetsLost: 1, packetLoss: 10,
+  bytesSent: 1000, bytesReceived: 900, bitrate: 50000, codec: 'audio/opus',
+  audioLevel: 0.4, candidateType: 'relay',
+};
+
 describe('real-time state lifecycle', () => {
   it('cleans socket and room mappings on disconnect', async () => {
     const state = new MemoryRealtimeStateStore();
@@ -47,5 +54,14 @@ describe('real-time state lifecycle', () => {
     const afterRestart = new MemoryRealtimeStateStore();
     await expect(afterRestart.getRoomMembers('ABC123')).resolves.toEqual([]);
     await expect(afterRestart.createRoom('ABC123', 'socket-b')).resolves.toBe(true);
+  });
+
+  it('buffers recent QoS metrics and expires them', async () => {
+    let now = 1_000;
+    const state = new MemoryRealtimeStateStore(2, () => now);
+    await state.appendMetric('ABC123', metric);
+    await expect(state.getRecentMetrics('ABC123')).resolves.toEqual([metric]);
+    now += 2_001;
+    await expect(state.getRecentMetrics('ABC123')).resolves.toEqual([]);
   });
 });

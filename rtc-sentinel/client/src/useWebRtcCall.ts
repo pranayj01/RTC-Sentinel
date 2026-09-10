@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { io, type Socket } from 'socket.io-client';
 import { mediaErrorMessage } from './mediaErrors';
 import { createIceConfiguration, selectedCandidateType } from './iceConfig';
+import { collectQosMetric, type QosBaseline, type QosMetric } from './qos';
 
 type Status = 'idle' | 'connecting' | 'waiting' | 'connected' | 'ended' | 'error';
 type Ack = { ok: boolean; roomId?: string; error?: string };
@@ -19,6 +20,7 @@ const iceConfiguration = createIceConfiguration(window.location.hostname, {
 
 export interface WebRtcCall {
   roomId: string; status: Status; statusLabel: string; muted: boolean; error: string; candidateType: string;
+  qosMetric: QosMetric | null; qosHistory: QosMetric[]; durationSeconds: number;
   remoteAudioRef: RefObject<HTMLAudioElement | null>;
   createCall(): Promise<void>; joinCall(roomId: string): Promise<void>;
   toggleMute(): void; endCall(): void;
@@ -30,12 +32,49 @@ export function useWebRtcCall(): WebRtcCall {
   const streamRef = useRef<MediaStream | null>(null);
   const roomRef = useRef('');
   const pendingIce = useRef<RTCIceCandidateInit[]>([]);
+  const qosBaseline = useRef<QosBaseline | undefined>(undefined);
+  const qosTimer = useRef<number | undefined>(undefined);
+  const durationTimer = useRef<number | undefined>(undefined);
+  const collectingQos = useRef(false);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const [roomId, setRoomId] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState('');
   const [candidateType, setCandidateType] = useState('discovering');
+  const [qosMetric, setQosMetric] = useState<QosMetric | null>(null);
+  const [qosHistory, setQosHistory] = useState<QosMetric[]>([]);
+  const [durationSeconds, setDurationSeconds] = useState(0);
+
+  const stopMonitoring = useCallback(() => {
+    if (qosTimer.current) window.clearInterval(qosTimer.current);
+    if (durationTimer.current) window.clearInterval(durationTimer.current);
+    qosTimer.current = undefined; durationTimer.current = undefined;
+    qosBaseline.current = undefined; collectingQos.current = false;
+  }, []);
+
+  const startMonitoring = useCallback((peer: RTCPeerConnection) => {
+    stopMonitoring(); setDurationSeconds(0);
+    const startedAt = Date.now();
+    const sample = async () => {
+      if (collectingQos.current || peer.connectionState !== 'connected') return;
+      collectingQos.current = true;
+      try {
+        const result = await collectQosMetric(peer, qosBaseline.current);
+        qosBaseline.current = result.baseline;
+        setQosMetric(result.metric);
+        setQosHistory((history) => [...history, result.metric].slice(-20));
+        if (result.metric.candidateType) setCandidateType(result.metric.candidateType);
+        if (roomRef.current) {
+          socketRef.current?.emit('qos-metric', { roomId: roomRef.current, metric: result.metric }, () => undefined);
+        }
+      } catch { /* A later interval retries transient stats failures. */ }
+      finally { collectingQos.current = false; }
+    };
+    void sample();
+    qosTimer.current = window.setInterval(() => void sample(), 3000);
+    durationTimer.current = window.setInterval(() => setDurationSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+  }, [stopMonitoring]);
 
   const ensureMedia = useCallback(async () => {
     if (streamRef.current) return streamRef.current;
@@ -58,6 +97,8 @@ export function useWebRtcCall(): WebRtcCall {
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === 'connected') {
         setStatus('connected');
+        socketRef.current?.emit('call-start', { roomId: roomRef.current }, () => undefined);
+        startMonitoring(peer);
         const inspect = async (attempt = 0): Promise<void> => {
           const type = await selectedCandidateType(peer);
           if (type !== 'unknown' || attempt >= 5) setCandidateType(type);
@@ -69,13 +110,14 @@ export function useWebRtcCall(): WebRtcCall {
       if (peer.connectionState === 'closed') setStatus('ended');
     };
     peerRef.current = peer; return peer;
-  }, [ensureMedia]);
+  }, [ensureMedia, startMonitoring]);
 
   const closePeer = useCallback((stopMedia = true) => {
+    stopMonitoring();
     peerRef.current?.close(); peerRef.current = null; pendingIce.current = [];
     if (stopMedia) { streamRef.current?.getTracks().forEach((track) => track.stop()); streamRef.current = null; }
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
-  }, []);
+  }, [stopMonitoring]);
 
   const waitForSignaling = useCallback((): Promise<Socket> => new Promise((resolve, reject) => {
     const socket = socketRef.current;
@@ -116,7 +158,7 @@ export function useWebRtcCall(): WebRtcCall {
   }, [closePeer, ensurePeer]);
 
   const createCall = useCallback(async () => {
-    setError(''); setStatus('connecting');
+    setError(''); setStatus('connecting'); setQosMetric(null); setQosHistory([]); setDurationSeconds(0);
     try { await ensureMedia(); } catch { return; }
     try { const socket = await waitForSignaling(); socket.emit('create-room', (ack: Ack) => {
       if (!ack.ok || !ack.roomId) { setError('Unable to create a room.'); setStatus('error'); return; }
@@ -125,7 +167,7 @@ export function useWebRtcCall(): WebRtcCall {
   }, [ensureMedia, waitForSignaling]);
 
   const joinCall = useCallback(async (requestedRoom: string) => {
-    setError(''); setStatus('connecting');
+    setError(''); setStatus('connecting'); setQosMetric(null); setQosHistory([]); setDurationSeconds(0);
     try { await ensureMedia(); } catch { return; }
     try { const socket = await waitForSignaling(); socket.emit('join-room', { roomId: requestedRoom.trim().toUpperCase() }, (ack: Ack) => {
       if (!ack.ok || !ack.roomId) { closePeer(); setError(ack.error === 'ROOM_FULL' ? 'This room already has two participants.' : 'Room not found.'); setStatus('error'); return; }
@@ -139,5 +181,5 @@ export function useWebRtcCall(): WebRtcCall {
     roomRef.current = ''; closePeer(); setMuted(false); setCandidateType('discovering'); setStatus('ended');
   }, [closePeer]);
   const labels: Record<Status, string> = { idle: 'Ready', connecting: 'Connecting', waiting: 'Waiting for peer', connected: 'Connected', ended: 'Ended', error: 'Error' };
-  return { roomId, status, statusLabel: labels[status], muted, error, candidateType, remoteAudioRef, createCall, joinCall, toggleMute, endCall };
+  return { roomId, status, statusLabel: labels[status], muted, error, candidateType, qosMetric, qosHistory, durationSeconds, remoteAudioRef, createCall, joinCall, toggleMute, endCall };
 }

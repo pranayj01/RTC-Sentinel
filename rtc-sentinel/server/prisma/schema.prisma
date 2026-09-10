@@ -51,6 +51,7 @@ model Call {
   caller     User              @relation("Caller", fields: [callerId], references: [id], onDelete: Restrict)
   receiver   User              @relation("Receiver", fields: [receiverId], references: [id], onDelete: Restrict)
   participants CallParticipant[]
+  metrics      CallMetric[]
 
   @@index([callerId, createdAt])
   @@index([receiverId, createdAt])
@@ -68,4 +69,25 @@ model CallParticipant {
 
   @@unique([callId, userId])
   @@index([userId])
+}
+
+model CallMetric {
+  id              String   @id @default(cuid())
+  callId          String
+  timestamp       DateTime @default(now())
+  rtt             Float?
+  jitter          Float?
+  packetsSent     Int      @default(0)
+  packetsReceived Int      @default(0)
+  packetsLost     Int      @default(0)
+  packetLoss      Float    @default(0)
+  bytesSent       Int      @default(0)
+  bytesReceived   Int      @default(0)
+  bitrate         Float    @default(0)
+  codec           String?
+  audioLevel      Float?
+  candidateType   String?
+  call            Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId, timestamp])
 }

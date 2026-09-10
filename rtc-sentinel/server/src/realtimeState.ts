@@ -1,4 +1,5 @@
 import { createClient } from 'redis';
+import type { QosMetricSample } from './metrics/types.js';
 
 type RedisConnection = ReturnType<typeof createClient>;
 
@@ -17,6 +18,8 @@ export interface RealtimeStateStore {
   getRoomMembers(roomId: string): Promise<string[]>;
   setCallStatus(roomId: string, status: CallSessionStatus): Promise<void>;
   getCallStatus(roomId: string): Promise<CallSessionStatus | null>;
+  appendMetric(roomId: string, sample: QosMetricSample): Promise<void>;
+  getRecentMetrics(roomId: string): Promise<QosMetricSample[]>;
 }
 
 interface ExpiringRoom {
@@ -29,11 +32,17 @@ interface ExpiringCall {
   expiresAt: number;
 }
 
+interface ExpiringMetrics {
+  samples: QosMetricSample[];
+  expiresAt: number;
+}
+
 export class MemoryRealtimeStateStore implements RealtimeStateStore {
   private readonly activeSockets = new Map<string, number>();
   private readonly rooms = new Map<string, ExpiringRoom>();
   private readonly socketRooms = new Map<string, Set<string>>();
   private readonly calls = new Map<string, ExpiringCall>();
+  private readonly metrics = new Map<string, ExpiringMetrics>();
 
   constructor(
     private readonly ttlSeconds = 3600,
@@ -64,6 +73,9 @@ export class MemoryRealtimeStateStore implements RealtimeStateStore {
     }
     for (const [roomId, call] of this.calls) {
       if (call.expiresAt <= now) this.calls.delete(roomId);
+    }
+    for (const [roomId, metrics] of this.metrics) {
+      if (metrics.expiresAt <= now) this.metrics.delete(roomId);
     }
   }
 
@@ -147,6 +159,17 @@ export class MemoryRealtimeStateStore implements RealtimeStateStore {
     this.sweep();
     return this.calls.get(roomId)?.status ?? null;
   }
+
+  async appendMetric(roomId: string, sample: QosMetricSample): Promise<void> {
+    this.sweep();
+    const recent = this.metrics.get(roomId)?.samples ?? [];
+    this.metrics.set(roomId, { samples: [...recent, sample].slice(-120), expiresAt: this.expiresAt() });
+  }
+
+  async getRecentMetrics(roomId: string): Promise<QosMetricSample[]> {
+    this.sweep();
+    return this.metrics.get(roomId)?.samples ?? [];
+  }
 }
 
 export class RedisRealtimeStateStore implements RealtimeStateStore {
@@ -162,6 +185,7 @@ export class RedisRealtimeStateStore implements RealtimeStateStore {
   private socket(socketId: string): string { return `${this.prefix}:socket:${socketId}`; }
   private socketRooms(socketId: string): string { return `${this.socket(socketId)}:rooms`; }
   private call(roomId: string): string { return `${this.prefix}:call:${roomId}:status`; }
+  private metrics(roomId: string): string { return `${this.prefix}:room:${roomId}:metrics`; }
   private activeSockets(): string { return `${this.prefix}:active:sockets`; }
   private activeUntil(): number { return Math.floor(Date.now() / 1000) + this.ttlSeconds; }
 
@@ -263,5 +287,21 @@ export class RedisRealtimeStateStore implements RealtimeStateStore {
 
   async getCallStatus(roomId: string): Promise<CallSessionStatus | null> {
     return (await this.client.get(this.call(roomId))) as CallSessionStatus | null;
+  }
+
+  async appendMetric(roomId: string, sample: QosMetricSample): Promise<void> {
+    await this.client.multi()
+      .rPush(this.metrics(roomId), JSON.stringify(sample))
+      .lTrim(this.metrics(roomId), -120, -1)
+      .expire(this.metrics(roomId), this.ttlSeconds)
+      .exec();
+  }
+
+  async getRecentMetrics(roomId: string): Promise<QosMetricSample[]> {
+    const samples = await this.client.lRange(this.metrics(roomId), 0, -1);
+    return samples.map((sample) => {
+      const parsed = JSON.parse(sample) as Omit<QosMetricSample, 'timestamp'> & { timestamp: string };
+      return { ...parsed, timestamp: new Date(parsed.timestamp) };
+    });
   }
 }

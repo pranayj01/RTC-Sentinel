@@ -3,10 +3,27 @@ import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import { z } from 'zod';
 import { MemoryRealtimeStateStore, type RealtimeStateStore } from './realtimeState.js';
+import { NullMetricRepository } from './metrics/metricRepository.js';
+import type { MetricRepository } from './metrics/types.js';
 
 const roomSchema = z.object({ roomId: z.string().trim().min(1).max(32) });
 const signalSchema = roomSchema.extend({ signal: z.unknown() });
-type Ack = (response: { ok: boolean; roomId?: string; error?: string }) => void;
+const count = z.number().int().min(0).max(2_147_483_647);
+const metricSchema = roomSchema.extend({ metric: z.object({
+  rtt: z.number().finite().min(0).nullable(),
+  jitter: z.number().finite().min(0).nullable(),
+  packetsSent: count,
+  packetsReceived: count,
+  packetsLost: count,
+  packetLoss: z.number().finite().min(0).max(100),
+  bytesSent: count,
+  bytesReceived: count,
+  bitrate: z.number().finite().min(0),
+  codec: z.string().max(100).nullable(),
+  audioLevel: z.number().finite().min(0).max(1).nullable(),
+  candidateType: z.string().max(20).nullable(),
+}) });
+type Ack = (response: { ok: boolean; roomId?: string; error?: string; persisted?: boolean }) => void;
 
 export interface SignalingServer {
   io: Server;
@@ -24,6 +41,7 @@ async function reserveRoom(state: RealtimeStateStore, socketId: string): Promise
 export function attachSignaling(
   httpServer: HttpServer,
   state: RealtimeStateStore = new MemoryRealtimeStateStore(),
+  metrics: MetricRepository = new NullMetricRepository(),
 ): SignalingServer {
   const io = new Server(httpServer, { cors: { origin: '*' } });
 
@@ -115,6 +133,19 @@ export function attachSignaling(
         ack({ ok: true, roomId });
       }));
     }
+
+    socket.on('qos-metric', (payload: unknown, ack: Ack) => run(ack, async () => {
+      const parsed = metricSchema.safeParse(payload);
+      if (!parsed.success) { ack({ ok: false, error: 'INVALID_METRIC' }); return; }
+      await ready;
+      const roomId = parsed.data.roomId.toUpperCase();
+      if (!(await state.isRoomMember(roomId, socket.id))) { ack({ ok: false, error: 'NOT_IN_ROOM' }); return; }
+      const sample = { ...parsed.data.metric, timestamp: new Date() };
+      await state.appendMetric(roomId, sample);
+      const record = await metrics.recordForRoom(roomId, sample);
+      socket.to(roomId).emit('qos-metric', { roomId, metric: sample });
+      ack({ ok: true, roomId, persisted: record !== null });
+    }));
 
     socket.on('disconnect', () => {
       void ready

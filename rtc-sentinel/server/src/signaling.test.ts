@@ -101,4 +101,23 @@ describe('Socket.IO signaling', () => {
       expect(await signaling.state.getCallStatus(roomId)).toBe(event === 'call-start' ? 'CONNECTED' : 'ENDED');
     }
   });
+
+  it('buffers and relays validated QoS metrics', async () => {
+    const { first, second, roomId } = await joinedPair();
+    const metric = {
+      rtt: 82, jitter: 11, packetsSent: 120, packetsReceived: 115, packetsLost: 1,
+      packetLoss: 0.86, bytesSent: 12000, bytesReceived: 11000, bitrate: 45000,
+      codec: 'audio/opus', audioLevel: 0.42, candidateType: 'relay',
+    };
+    const received = new Promise<Record<string, unknown>>((resolve) => second.once('qos-metric', resolve));
+    await expect(emitAck(first, 'qos-metric', { roomId, metric })).resolves.toMatchObject({ ok: true, persisted: false });
+    await expect(received).resolves.toMatchObject({ roomId, metric });
+    await expect(signaling.state.getRecentMetrics(roomId)).resolves.toEqual([expect.objectContaining(metric)]);
+  });
+
+  it('rejects invalid QoS metrics', async () => {
+    const { first, roomId } = await joinedPair();
+    await expect(emitAck(first, 'qos-metric', { roomId, metric: { packetLoss: 101 } }))
+      .resolves.toEqual({ ok: false, error: 'INVALID_METRIC' });
+  });
 });

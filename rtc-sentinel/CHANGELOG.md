@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0
+
+- Sample WebRTC audio and network statistics every three seconds in the browser.
+- Display live RTT, jitter, packet loss, bitrate, packet counts, codec, audio level, candidate type, duration, and RTT history.
+- Validate and relay QoS samples through Socket.IO with a rolling Redis buffer.
+- Persist metrics for matching calls in PostgreSQL and expose a participant-protected metrics API.
+
 ## 0.6.5
 
 - Move active Socket.IO room membership and reverse socket mappings into Redis.
