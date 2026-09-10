@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0
+
+- Add validated FastAPI `POST /predict-quality` and `GET /model/info` endpoints.
+- Establish the Phase 8 deterministic classifier as the analytics-service baseline for later ML comparison.
+- Add an authenticated Node analytics proxy with response validation and request timeouts.
+- Return a stable `503 QUALITY_SERVICE_UNAVAILABLE` response when Python analytics cannot respond safely.
+- Add Python, Node-client, proxy-route, and Docker integration coverage.
+
 ## 0.7.5
 
 - Classify each WebRTC QoS sample as Excellent, Good, Fair, Poor, Critical, or Unknown.

@@ -10,12 +10,16 @@ import { PrismaCallRepository } from './calls/callRepository.js';
 import { PrismaMetricRepository } from './metrics/metricRepository.js';
 import { createMetricRouter } from './metrics/routes.js';
 import type { MetricRepository } from './metrics/types.js';
+import { createAnalyticsRouter } from './analytics/routes.js';
+import { HttpQualityPredictor } from './analytics/qualityClient.js';
+import type { QualityPredictor } from './analytics/types.js';
 
 export function createApp(
   users: UserRepository = new PrismaUserRepository(prisma),
   calls: CallRepository = new PrismaCallRepository(prisma),
   now: () => Date = () => new Date(),
   metrics: MetricRepository = new PrismaMetricRepository(prisma),
+  qualityPredictor: QualityPredictor = new HttpQualityPredictor(),
 ) {
   const app = express();
 
@@ -26,6 +30,7 @@ export function createApp(
   app.use(createApiRouter(users));
   app.use(createCallRouter(users, calls, now));
   app.use(createMetricRouter(calls, metrics));
+  app.use(createAnalyticsRouter(qualityPredictor));
   const errors: ErrorRequestHandler = (error, _request, response, _next) => {
     if (error instanceof ZodError) { response.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid request', details: error.flatten() } }); return; }
     if (error instanceof SyntaxError) { response.status(400).json({ error: { code: 'INVALID_JSON', message: 'Invalid JSON body' } }); return; }

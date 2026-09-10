@@ -24,6 +24,8 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-rtc_sentinel}:${POSTGRES_PASSWORD:-rtc_sentinel}@postgres:5432/${POSTGRES_DB:-rtc_sentinel}?schema=public
       REDIS_URL: redis://redis:6379
+      ML_SERVICE_URL: ${ML_SERVICE_URL:-http://ml-service:8000}
+      ML_SERVICE_TIMEOUT_MS: ${ML_SERVICE_TIMEOUT_MS:-2000}
       REALTIME_TTL_SECONDS: ${REALTIME_TTL_SECONDS:-3600}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-development-access-secret-change-me}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-development-refresh-secret-change-me}
