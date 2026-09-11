@@ -3,6 +3,7 @@ export interface QualityFeatures {
   jitter: number;
   packetLoss: number;
   bitrate: number;
+  audioLevel?: number;
 }
 
 export type PredictedQuality =

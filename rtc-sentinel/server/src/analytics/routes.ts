@@ -9,6 +9,7 @@ const featuresSchema = z.object({
   jitter: z.number().finite().min(0),
   packetLoss: z.number().finite().min(0).max(100),
   bitrate: z.number().finite().min(0),
+  audioLevel: z.number().finite().min(0).max(1).optional(),
 });
 
 export function createAnalyticsRouter(predictor: QualityPredictor): Router {

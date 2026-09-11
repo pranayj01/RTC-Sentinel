@@ -33,6 +33,7 @@ const prediction = await jsonRequest(`${apiUrl}/analytics/predict-quality`, {
     jitter: 34,
     packetLoss: 4.1,
     bitrate: 22000,
+    audioLevel: 0.42,
   }),
 });
 if (expectUnavailable) {
@@ -44,11 +45,18 @@ if (expectUnavailable) {
 } else {
   const info = await jsonRequest(`${analyticsUrl}/model/info`);
   assert.equal(info.response.status, 200);
-  assert.equal(info.body.type, 'deterministic-baseline');
+  assert.equal(info.body.type, 'machine-learning');
   assert.equal(prediction.response.status, 200);
-  assert.deepEqual(prediction.body, {
-    prediction: { quality: 'fair', confidence: 1 },
-  });
+  assert.ok(info.body.algorithm);
+  assert.ok(
+    ['excellent', 'good', 'fair', 'poor', 'critical'].includes(
+      prediction.body.prediction.quality,
+    ),
+  );
+  assert.ok(
+    prediction.body.prediction.confidence >= 0 &&
+      prediction.body.prediction.confidence <= 1,
+  );
   console.log(
     JSON.stringify({
       model: info.body,

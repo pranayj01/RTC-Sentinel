@@ -26,7 +26,7 @@ describe('quality analytics API', () => {
     process.env.JWT_ACCESS_SECRET = 'test-access-secret';
   });
   const auth = () => `Bearer ${createAccessToken('user-1')}`;
-  const features = { rtt: 155, jitter: 34, packetLoss: 4.1, bitrate: 22000 };
+  const features = { rtt: 155, jitter: 34, packetLoss: 4.1, bitrate: 22000, audioLevel: 0.42 };
 
   it('returns the Python service prediction to an authenticated user', async () => {
     const predict = jest
@@ -56,6 +56,12 @@ describe('quality analytics API', () => {
       .set('Authorization', auth())
       .send({ ...features, rtt: 'fast' });
     expect(invalid.status).toBe(400);
+
+    const invalidAudio = await request(appWith(predictor))
+      .post('/analytics/predict-quality')
+      .set('Authorization', auth())
+      .send({ ...features, audioLevel: 2 });
+    expect(invalidAudio.status).toBe(400);
   });
 
   it('returns 503 when the Python service is unavailable', async () => {

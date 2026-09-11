@@ -1,6 +1,6 @@
 # Python analytics service
 
-The FastAPI service owns the analytics boundary that later phases will use for trained ML models. Phase 9 deliberately serves the deterministic quality baseline from Phase 8; Phase 10 can replace the implementation without changing its HTTP contract.
+The FastAPI service owns the analytics boundary for the trained QoS classifier. Phase 10 preserves the Phase 9 HTTP contract while replacing its deterministic implementation with a selected classical-ML model.
 
 ## API
 
@@ -13,7 +13,8 @@ Request:
   "rtt": 155,
   "jitter": 34,
   "packetLoss": 4.1,
-  "bitrate": 22000
+  "bitrate": 22000,
+  "audioLevel": 0.42
 }
 ```
 
@@ -22,15 +23,15 @@ Response:
 ```json
 {
   "quality": "fair",
-  "confidence": 1.0
+  "confidence": 0.93
 }
 ```
 
-All four measurements are required, numeric, finite, and non-negative. Packet loss must be between 0 and 100. Confidence is always within 0–1; the deterministic baseline reports `1.0` because its output is not probabilistic.
+The four network measurements are required, numeric, finite, and non-negative. Packet loss must be between 0 and 100. Audio level is optional, must be between 0 and 1, and defaults to `0.5`. Confidence is the selected classifier's highest `predict_proba` value and is always within 0–1.
 
 ### `GET /model/info`
 
-Returns the active model name, version, implementation type, feature list, and output labels.
+Returns the active model name, version, selected algorithm, feature list, output labels, training-data provenance, candidate metrics, deterministic baseline metrics, and confusion matrices. See [the ML model report](ml-model.md).
 
 ### `GET /health`
 

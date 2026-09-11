@@ -1,6 +1,6 @@
 # RTC Sentinel
 
-RTC Sentinel is a WebRTC monitoring platform with browser-to-browser audio, Socket.IO signaling, authenticated call storage, Redis real-time state, live WebRTC QoS metrics, deterministic call-quality scoring, and a Python analytics API. The React, Express, FastAPI, PostgreSQL, Redis, and Coturn services run together through Docker Compose.
+RTC Sentinel is a WebRTC monitoring platform with browser-to-browser audio, Socket.IO signaling, authenticated call storage, Redis real-time state, live WebRTC QoS metrics, deterministic call-quality scoring, and a Python ML analytics API. The React, Express, FastAPI, PostgreSQL, Redis, and Coturn services run together through Docker Compose.
 
 ## Prerequisites
 
@@ -31,6 +31,8 @@ Analytics endpoints:
 - Authenticated Node proxy: `POST http://localhost:3000/analytics/predict-quality`
 
 See [the Python analytics service contract](docs/analytics-service.md) for payloads and failure behavior.
+
+The ML pipeline evaluates logistic regression, random forest, and gradient boosting against the deterministic baseline, selects by macro F1, and exposes its metrics and confusion matrix. The current release uses reproducible synthetic labels and makes no claim of improving on the rule baseline; see [the ML model report](docs/ml-model.md) for results and limitations.
 
 Open the client in two browser tabs, create a call in the first, then join its room ID in the second to establish a peer-to-peer audio call.
 Once connected, the dashboard samples `RTCPeerConnection.getStats()` every three seconds and displays RTT, jitter, packet loss, bitrate, packets, codec, audio level, candidate type, and an explainable `Excellent` through `Critical` quality rating. See [the quality-engine rules](docs/quality-engine.md).
@@ -93,4 +95,4 @@ The GitHub Actions workflow runs these gates and starts the complete Compose sta
 - `infrastructure/coturn/` — TURN server configuration
 - `docs/` — architecture and operating notes
 
-Current release: **v0.8.0**
+Current release: **v0.8.5**

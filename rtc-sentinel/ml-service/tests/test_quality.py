@@ -42,10 +42,15 @@ def test_rejects_incorrect_types() -> None:
 def test_reports_model_information() -> None:
     response = client.get("/model/info")
     assert response.status_code == 200
-    assert response.json() == {
-        "name": "rtc-sentinel-quality-baseline",
-        "version": "1.0.0",
-        "type": "deterministic-baseline",
-        "features": ["rtt", "jitter", "packetLoss", "bitrate"],
-        "labels": ["excellent", "good", "fair", "poor", "critical"],
+    info = response.json()
+    assert info["name"] == "rtc-sentinel-qos-classifier"
+    assert info["type"] == "machine-learning"
+    assert info["algorithm"] in {"logistic-regression", "random-forest", "gradient-boosting"}
+    assert info["features"] == ["rtt", "jitter", "packetLoss", "bitrate", "audioLevel"]
+    assert set(info["candidates"]) == {
+        "logistic-regression",
+        "random-forest",
+        "gradient-boosting",
     }
+    assert 0 <= info["metrics"]["f1Macro"] <= 1
+    assert len(info["metrics"]["confusionMatrix"]) == 5

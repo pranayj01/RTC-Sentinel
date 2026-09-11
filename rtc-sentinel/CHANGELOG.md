@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.5
+
+- Add a seeded, balanced QoS dataset generator with RTT, jitter, packet loss, bitrate, and audio-level features.
+- Train and compare logistic regression, random forest, and gradient boosting classifiers.
+- Select gradient boosting by macro F1 and report accuracy, macro precision, recall, F1, and confusion matrices.
+- Serve ML probabilities through the existing FastAPI and authenticated Node analytics APIs.
+- Train a reproducible model artifact during the Docker build and add a dedicated Linux test stage.
+- Document dataset provenance, rule-based comparison, results, limitations, and the path to real-data evaluation.
+
 ## 0.8.0
 
 - Add validated FastAPI `POST /predict-quality` and `GET /model/info` endpoints.

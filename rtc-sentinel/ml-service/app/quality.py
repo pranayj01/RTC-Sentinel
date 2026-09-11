@@ -10,6 +10,7 @@ class QualityFeatures(BaseModel):
     jitter: Annotated[float, Field(strict=True, ge=0)]
     packetLoss: Annotated[float, Field(strict=True, ge=0, le=100)]
     bitrate: Annotated[float, Field(strict=True, ge=0)]
+    audioLevel: Annotated[float, Field(strict=True, ge=0, le=1)] = 0.5
 
 
 class QualityPrediction(BaseModel):
@@ -33,12 +34,27 @@ def _bitrate_tier(bitrate: float) -> int:
     return 4
 
 
-def predict_quality(features: QualityFeatures) -> QualityPrediction:
+def rule_based_quality_values(
+    rtt: float,
+    jitter: float,
+    packet_loss: float,
+    bitrate: float,
+) -> QualityLabel:
     tiers = (
-        _upper_bound_tier(features.rtt, (150, 250, 400, 800)),
-        _upper_bound_tier(features.jitter, (20, 40, 70, 120)),
-        _upper_bound_tier(features.packetLoss, (1, 2.5, 5, 10)),
-        _bitrate_tier(features.bitrate),
+        _upper_bound_tier(rtt, (150, 250, 400, 800)),
+        _upper_bound_tier(jitter, (20, 40, 70, 120)),
+        _upper_bound_tier(packet_loss, (1, 2.5, 5, 10)),
+        _bitrate_tier(bitrate),
     )
     labels: tuple[QualityLabel, ...] = ("excellent", "good", "fair", "poor", "critical")
-    return QualityPrediction(quality=labels[max(tiers)], confidence=1.0)
+    return labels[max(tiers)]
+
+
+def predict_rule_quality(features: QualityFeatures) -> QualityPrediction:
+    quality = rule_based_quality_values(
+        features.rtt,
+        features.jitter,
+        features.packetLoss,
+        features.bitrate,
+    )
+    return QualityPrediction(quality=quality, confidence=1.0)

@@ -15,7 +15,7 @@ jobs:
           cache: npm
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
           cache: pip
           cache-dependency-path: ml-service/requirements-dev.txt
       - run: npm install
@@ -40,6 +40,7 @@ jobs:
           curl --fail http://localhost:5173
           test "$(curl --silent http://localhost:3000/health)" = '{"status":"ok"}'
           test "$(curl --silent http://localhost:8000/health)" = '{"status":"ok"}'
+          curl --fail http://localhost:8000/model/info | grep '"type":"machine-learning"'
           docker compose exec -T postgres pg_isready -U rtc_sentinel -d rtc_sentinel
           test "$(docker compose exec -T redis redis-cli ping | tr -d '\r')" = 'PONG'
       - if: always()
