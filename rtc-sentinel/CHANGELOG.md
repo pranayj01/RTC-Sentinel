@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add browser registration, sign-in, session restoration, automatic token refresh, and sign-out.
+- Protect the calling workspace and Socket.IO signaling handshake with JWT authentication.
+- Add restricted anonymous guest access for joining existing rooms without an account.
+- Display authenticated live ML quality predictions beside the deterministic quality score with a plain-language confidence explanation.
+- Add same-origin API proxies for the Vite development server and Docker Nginx client.
+
 ## 0.8.5
 
 - Add a seeded, balanced QoS dataset generator with RTT, jitter, packet loss, bitrate, and audio-level features.

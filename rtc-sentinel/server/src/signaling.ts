@@ -9,6 +9,7 @@ import {
 import { NullMetricRepository } from './metrics/metricRepository.js';
 import type { MetricRepository } from './metrics/types.js';
 import { assessCallQuality } from './metrics/quality.js';
+import { verifyAccessToken } from './auth/tokens.js';
 
 const roomSchema = z.object({ roomId: z.string().trim().min(1).max(32) });
 const signalSchema = roomSchema.extend({ signal: z.unknown() });
@@ -58,6 +59,24 @@ export function attachSignaling(
   metrics: MetricRepository = new NullMetricRepository(),
 ): SignalingServer {
   const io = new Server(httpServer, { cors: { origin: '*' } });
+  io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (typeof token !== 'string' || token.length === 0) {
+      if (socket.handshake.auth.guest === true) {
+        socket.data.guest = true;
+        next();
+        return;
+      }
+      next(new Error('Authentication required'));
+      return;
+    }
+    try {
+      socket.data.userId = verifyAccessToken(token);
+      next();
+    } catch {
+      next(new Error('Invalid or expired token'));
+    }
+  });
 
   io.on('connection', (socket) => {
     const ready = state.registerSocket(socket.id);
@@ -87,6 +106,10 @@ export function attachSignaling(
 
     socket.on('create-room', (ack: Ack) =>
       run(ack, async () => {
+        if (socket.data.guest === true) {
+          ack({ ok: false, error: 'AUTHENTICATION_REQUIRED' });
+          return;
+        }
         await leaveAllRooms();
         const roomId = await reserveRoom(state, socket.id);
         await socket.join(roomId);
@@ -159,13 +182,11 @@ export function attachSignaling(
             ack({ ok: false, error: 'NOT_IN_ROOM' });
             return;
           }
-          socket
-            .to(roomId)
-            .emit(event, {
-              roomId,
-              signal: parsed.data.signal,
-              from: socket.id,
-            });
+          socket.to(roomId).emit(event, {
+            roomId,
+            signal: parsed.data.signal,
+            from: socket.id,
+          });
           console.log(`${event} relayed in ${roomId}`);
           ack({ ok: true, roomId });
         }),

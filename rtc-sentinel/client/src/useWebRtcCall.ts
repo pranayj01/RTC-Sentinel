@@ -52,7 +52,9 @@ export interface WebRtcCall {
   endCall(): void;
 }
 
-export function useWebRtcCall(): WebRtcCall {
+export function useWebRtcCall(accessToken: string, guest = false): WebRtcCall {
+  const accessTokenRef = useRef(accessToken);
+  const guestRef = useRef(guest);
   const socketRef = useRef<Socket | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -76,6 +78,16 @@ export function useWebRtcCall(): WebRtcCall {
     score: null,
     limitingFactors: ['Waiting for complete WebRTC statistics'],
   });
+
+  useEffect(() => {
+    accessTokenRef.current = accessToken;
+    guestRef.current = guest;
+    if (socketRef.current) {
+      socketRef.current.auth = accessToken
+        ? { token: accessToken }
+        : { guest: guestRef.current };
+    }
+  }, [accessToken, guest]);
 
   const stopMonitoring = useCallback(() => {
     if (qosTimer.current) window.clearInterval(qosTimer.current);
@@ -235,7 +247,12 @@ export function useWebRtcCall(): WebRtcCall {
   );
 
   useEffect(() => {
-    const socket = io(SIGNALING_URL, { transports: ['websocket'] });
+    const socket = io(SIGNALING_URL, {
+      transports: ['websocket'],
+      auth: accessTokenRef.current
+        ? { token: accessTokenRef.current }
+        : { guest: guestRef.current },
+    });
     socketRef.current = socket;
     socket.on('peer-joined', async () => {
       try {

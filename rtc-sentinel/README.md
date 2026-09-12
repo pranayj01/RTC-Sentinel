@@ -34,8 +34,12 @@ See [the Python analytics service contract](docs/analytics-service.md) for paylo
 
 The ML pipeline evaluates logistic regression, random forest, and gradient boosting against the deterministic baseline, selects by macro F1, and exposes its metrics and confusion matrix. The current release uses reproducible synthetic labels and makes no claim of improving on the rule baseline; see [the ML model report](docs/ml-model.md) for results and limitations.
 
-Open the client in two browser tabs, create a call in the first, then join its room ID in the second to establish a peer-to-peer audio call.
+Create an account or sign in to host calls and use protected ML analytics. The client stores the session locally, refreshes short-lived access tokens, and sends the access token during the Socket.IO handshake. A guest can instead choose **Join a call as guest** and enter an existing room ID without creating an account; guests cannot create rooms or call the protected ML endpoint.
+
+Open the client in two browser tabs, sign in (the same test account is sufficient), create a call in the first, then join its room ID in the second to establish a peer-to-peer audio call.
 Once connected, the dashboard samples `RTCPeerConnection.getStats()` every three seconds and displays RTT, jitter, packet loss, bitrate, packets, codec, audio level, candidate type, and an explainable `Excellent` through `Critical` quality rating. See [the quality-engine rules](docs/quality-engine.md).
+
+For signed-in users, the call dashboard also sends complete live samples through the authenticated Node analytics endpoint and displays the ML class with its probability confidence beside the deterministic score. Confidence represents the classifier's certainty about its label; it is not a percentage score for the call. Guest calls retain the local deterministic score without sending samples to the ML API.
 
 To verify the Compose stack:
 

@@ -1,6 +1,8 @@
 # WebRTC audio flow
 
-RTC Sentinel captures audio only after the user chooses **Create Call** or **Join Call**. Each peer adds its microphone track to an `RTCPeerConnection`; media then travels peer-to-peer rather than through the Node server.
+RTC Sentinel requires a valid account and access token to create a room. The browser includes that token in the Socket.IO handshake. A user may explicitly enter guest mode without an account; the signaling server accepts that restricted handshake for joining an existing room but rejects room creation. Connections that provide neither a valid token nor the explicit guest marker are rejected.
+
+RTC Sentinel captures audio only after a signed-in host chooses **Create Call** or a signed-in/guest participant chooses **Join Call**. Each peer adds its microphone track to an `RTCPeerConnection`; media then travels peer-to-peer rather than through the Node server.
 
 ## Caller
 
