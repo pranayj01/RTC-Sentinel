@@ -2,11 +2,19 @@
 
 ## Unreleased
 
+## 0.9.0
+
 - Add browser registration, sign-in, session restoration, automatic token refresh, and sign-out.
 - Protect the calling workspace and Socket.IO signaling handshake with JWT authentication.
 - Add restricted anonymous guest access for joining existing rooms without an account.
 - Display authenticated live ML quality predictions beside the deterministic quality score with a plain-language confidence explanation.
 - Add same-origin API proxies for the Vite development server and Docker Nginx client.
+- Add opt-in Web Audio microphone sampling with little-endian PCM encoding.
+- Extract RMS energy, zero-crossing rate, spectral centroid, MFCCs, and Mel spectrogram features with Librosa.
+- Train and compare logistic-regression and random-forest speech, silence, and noise classifiers.
+- Add protected Node and FastAPI audio-analysis endpoints with input limits and graceful failure behavior.
+- Display live audio classifications and interpretable signal features without retaining raw audio.
+- Document the synthetic dataset, candidate results, confusion matrix, privacy behavior, and real-data limitations.
 
 ## 0.8.5
 

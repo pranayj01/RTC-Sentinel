@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 FROM base AS trained
 COPY ml-service/app app
 RUN python -m app.train_model
+RUN python -m app.train_audio_model
 
 FROM trained AS test
 COPY ml-service/requirements-dev.txt .

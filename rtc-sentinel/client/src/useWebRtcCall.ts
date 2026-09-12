@@ -10,6 +10,11 @@ import { mediaErrorMessage } from './mediaErrors';
 import { createIceConfiguration, selectedCandidateType } from './iceConfig';
 import { collectQosMetric, type QosBaseline, type QosMetric } from './qos';
 import { assessCallQuality, type QualityAssessment } from './quality';
+import {
+  createAudioSampler,
+  type AudioSampler,
+  type PcmAudioChunk,
+} from './audioCapture';
 
 type Status =
   'idle' | 'connecting' | 'waiting' | 'connected' | 'ended' | 'error';
@@ -45,6 +50,7 @@ export interface WebRtcCall {
   qosHistory: QosMetric[];
   durationSeconds: number;
   quality: QualityAssessment;
+  audioChunk: PcmAudioChunk | null;
   remoteAudioRef: RefObject<HTMLAudioElement | null>;
   createCall(): Promise<void>;
   joinCall(roomId: string): Promise<void>;
@@ -52,12 +58,18 @@ export interface WebRtcCall {
   endCall(): void;
 }
 
-export function useWebRtcCall(accessToken: string, guest = false): WebRtcCall {
+export function useWebRtcCall(
+  accessToken: string,
+  guest = false,
+  audioAnalysisEnabled = false,
+): WebRtcCall {
   const accessTokenRef = useRef(accessToken);
   const guestRef = useRef(guest);
+  const audioAnalysisEnabledRef = useRef(audioAnalysisEnabled);
   const socketRef = useRef<Socket | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const audioSamplerRef = useRef<AudioSampler | null>(null);
   const roomRef = useRef('');
   const pendingIce = useRef<RTCIceCandidateInit[]>([]);
   const qosBaseline = useRef<QosBaseline | undefined>(undefined);
@@ -78,6 +90,7 @@ export function useWebRtcCall(accessToken: string, guest = false): WebRtcCall {
     score: null,
     limitingFactors: ['Waiting for complete WebRTC statistics'],
   });
+  const [audioChunk, setAudioChunk] = useState<PcmAudioChunk | null>(null);
 
   useEffect(() => {
     accessTokenRef.current = accessToken;
@@ -88,6 +101,11 @@ export function useWebRtcCall(accessToken: string, guest = false): WebRtcCall {
         : { guest: guestRef.current };
     }
   }, [accessToken, guest]);
+
+  useEffect(() => {
+    audioAnalysisEnabledRef.current = audioAnalysisEnabled;
+    if (!audioAnalysisEnabled) setAudioChunk(null);
+  }, [audioAnalysisEnabled]);
 
   const stopMonitoring = useCallback(() => {
     if (qosTimer.current) window.clearInterval(qosTimer.current);
@@ -122,6 +140,9 @@ export function useWebRtcCall(accessToken: string, guest = false): WebRtcCall {
               () => undefined,
             );
           }
+          if (audioAnalysisEnabledRef.current && audioSamplerRef.current) {
+            setAudioChunk(audioSamplerRef.current.sample());
+          }
         } catch {
           /* A later interval retries transient stats failures. */
         } finally {
@@ -146,6 +167,11 @@ export function useWebRtcCall(accessToken: string, guest = false): WebRtcCall {
         video: false,
       });
       streamRef.current = stream;
+      try {
+        audioSamplerRef.current = createAudioSampler(stream);
+      } catch {
+        audioSamplerRef.current = null;
+      }
       return stream;
     } catch (cause) {
       setError(mediaErrorMessage(cause));
@@ -203,8 +229,11 @@ export function useWebRtcCall(accessToken: string, guest = false): WebRtcCall {
       peerRef.current = null;
       pendingIce.current = [];
       if (stopMedia) {
+        audioSamplerRef.current?.close();
+        audioSamplerRef.current = null;
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
+        setAudioChunk(null);
       }
       if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     },
@@ -461,6 +490,7 @@ export function useWebRtcCall(accessToken: string, guest = false): WebRtcCall {
     qosHistory,
     durationSeconds,
     quality,
+    audioChunk,
     remoteAudioRef,
     createCall,
     joinCall,

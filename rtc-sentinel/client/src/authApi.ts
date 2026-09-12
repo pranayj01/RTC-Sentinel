@@ -24,6 +24,19 @@ export interface MlQualityPrediction {
   confidence: number;
 }
 
+export interface AudioAnalysis {
+  label: 'speech' | 'silence' | 'noise';
+  confidence: number;
+  durationMs: number;
+  features: {
+    rmsEnergy: number;
+    zeroCrossingRate: number;
+    spectralCentroidHz: number;
+    mfcc: number[];
+    melSpectrogram: number[];
+  };
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -112,4 +125,20 @@ export async function predictQuality(
     accessToken,
   );
   return response.prediction;
+}
+
+export async function analyzeAudio(
+  accessToken: string,
+  chunk: {
+    encoding: 'pcm_s16le';
+    sampleRate: number;
+    pcmBase64: string;
+  },
+): Promise<AudioAnalysis> {
+  const response = await request<{ analysis: AudioAnalysis }>(
+    '/analytics/analyze-audio',
+    { method: 'POST', body: JSON.stringify(chunk) },
+    accessToken,
+  );
+  return response.analysis;
 }

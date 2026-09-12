@@ -41,6 +41,8 @@ jobs:
           test "$(curl --silent http://localhost:3000/health)" = '{"status":"ok"}'
           test "$(curl --silent http://localhost:8000/health)" = '{"status":"ok"}'
           curl --fail http://localhost:8000/model/info | grep '"type":"machine-learning"'
+          curl --fail http://localhost:8000/audio/model/info | grep '"type":"machine-learning"'
+          node server/scripts/analytics-smoke.mjs
           docker compose exec -T postgres pg_isready -U rtc_sentinel -d rtc_sentinel
           test "$(docker compose exec -T redis redis-cli ping | tr -d '\r')" = 'PONG'
       - if: always()

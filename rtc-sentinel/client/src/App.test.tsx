@@ -1,17 +1,23 @@
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App } from './App';
-import { predictQuality } from './authApi';
+import { analyzeAudio, predictQuality } from './authApi';
 import { useAuth } from './useAuth';
 import { useWebRtcCall } from './useWebRtcCall';
 
-jest.mock('./authApi', () => ({ predictQuality: jest.fn() }));
+jest.mock('./authApi', () => ({
+  analyzeAudio: jest.fn(),
+  predictQuality: jest.fn(),
+}));
 jest.mock('./useAuth', () => ({ useAuth: jest.fn() }));
 jest.mock('./useWebRtcCall', () => ({ useWebRtcCall: jest.fn() }));
 const mockAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockCall = useWebRtcCall as jest.MockedFunction<typeof useWebRtcCall>;
 const mockPredictQuality = predictQuality as jest.MockedFunction<
   typeof predictQuality
+>;
+const mockAnalyzeAudio = analyzeAudio as jest.MockedFunction<
+  typeof analyzeAudio
 >;
 
 const authenticated = {
@@ -44,6 +50,7 @@ const idleCall = {
     score: null,
     limitingFactors: ['Waiting for complete WebRTC statistics'],
   },
+  audioChunk: null,
   remoteAudioRef: { current: null },
   createCall: jest.fn(),
   joinCall: jest.fn(),
@@ -58,6 +65,18 @@ beforeEach(() => {
   mockPredictQuality.mockResolvedValue({
     quality: 'excellent',
     confidence: 0.96,
+  });
+  mockAnalyzeAudio.mockResolvedValue({
+    label: 'speech',
+    confidence: 0.91,
+    durationMs: 341,
+    features: {
+      rmsEnergy: 0.125,
+      zeroCrossingRate: 0.083,
+      spectralCentroidHz: 1280,
+      mfcc: Array(13).fill(0),
+      melSpectrogram: Array(16).fill(0),
+    },
   });
 });
 
@@ -137,7 +156,7 @@ test('allows anonymous users to enter join-only guest mode', () => {
   expect(screen.getByText('Join-only access')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Create Call' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Join Call' })).toBeInTheDocument();
-  expect(mockCall).toHaveBeenCalledWith('', true);
+  expect(mockCall).toHaveBeenCalledWith('', true, false);
 });
 
 test('offers call creation and room joining', () => {
@@ -209,4 +228,36 @@ test('shows active call state, ML prediction, and controls', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'End Call' }));
   expect(active.toggleMute).toHaveBeenCalled();
   expect(active.endCall).toHaveBeenCalled();
+});
+
+test('runs opt-in audio signal analysis for signed-in calls', async () => {
+  const active = {
+    ...idleCall,
+    roomId: 'ABC123',
+    status: 'connected' as const,
+    statusLabel: 'Connected',
+    audioChunk: {
+      encoding: 'pcm_s16le' as const,
+      sampleRate: 48000,
+      pcmBase64: 'AAAAAA==',
+    },
+  };
+  mockCall.mockReturnValue(active);
+  render(<App />);
+
+  expect(screen.getByText('Off')).toBeInTheDocument();
+  expect(mockAnalyzeAudio).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Enable audio analysis' }),
+  );
+
+  await waitFor(() =>
+    expect(mockAnalyzeAudio).toHaveBeenCalledWith(
+      'access-token',
+      active.audioChunk,
+    ),
+  );
+  expect(await screen.findByText('Speech')).toBeInTheDocument();
+  expect(screen.getByText('91%')).toBeInTheDocument();
+  expect(mockCall).toHaveBeenLastCalledWith('access-token', false, true);
 });

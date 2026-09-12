@@ -1,6 +1,6 @@
 # RTC Sentinel
 
-RTC Sentinel is a WebRTC monitoring platform with browser-to-browser audio, Socket.IO signaling, authenticated call storage, Redis real-time state, live WebRTC QoS metrics, deterministic call-quality scoring, and a Python ML analytics API. The React, Express, FastAPI, PostgreSQL, Redis, and Coturn services run together through Docker Compose.
+RTC Sentinel is a WebRTC monitoring platform with browser-to-browser audio, Socket.IO signaling, authenticated call storage, Redis real-time state, live WebRTC QoS metrics, deterministic call-quality scoring, and Python ML analytics for network quality and audio conditions. The React, Express, FastAPI, PostgreSQL, Redis, and Coturn services run together through Docker Compose.
 
 ## Prerequisites
 
@@ -28,7 +28,10 @@ Analytics endpoints:
 
 - FastAPI prediction: `POST http://localhost:8000/predict-quality`
 - FastAPI model metadata: `GET http://localhost:8000/model/info`
+- FastAPI audio analysis: `POST http://localhost:8000/analyze-audio`
+- FastAPI audio model metadata: `GET http://localhost:8000/audio/model/info`
 - Authenticated Node proxy: `POST http://localhost:3000/analytics/predict-quality`
+- Authenticated audio proxy: `POST http://localhost:3000/analytics/analyze-audio`
 
 See [the Python analytics service contract](docs/analytics-service.md) for payloads and failure behavior.
 
@@ -40,6 +43,8 @@ Open the client in two browser tabs, sign in (the same test account is sufficien
 Once connected, the dashboard samples `RTCPeerConnection.getStats()` every three seconds and displays RTT, jitter, packet loss, bitrate, packets, codec, audio level, candidate type, and an explainable `Excellent` through `Critical` quality rating. See [the quality-engine rules](docs/quality-engine.md).
 
 For signed-in users, the call dashboard also sends complete live samples through the authenticated Node analytics endpoint and displays the ML class with its probability confidence beside the deterministic score. Confidence represents the classifier's certainty about its label; it is not a percentage score for the call. Guest calls retain the local deterministic score without sending samples to the ML API.
+
+Signed-in callers can separately opt in to audio signal analysis. While enabled, the browser submits a short local-microphone PCM frame every three seconds and displays whether it resembles speech, silence, or noise along with RMS energy, zero-crossing rate, and spectral centroid. This feature does not recognize words, does not transcribe speech, and does not persist raw audio. See [the audio analysis design and model report](docs/audio-analysis.md).
 
 To verify the Compose stack:
 
@@ -99,4 +104,4 @@ The GitHub Actions workflow runs these gates and starts the complete Compose sta
 - `infrastructure/coturn/` — TURN server configuration
 - `docs/` — architecture and operating notes
 
-Current release: **v0.8.5**
+Current release: **v0.9.0**

@@ -272,6 +272,74 @@ audio {
   font-size: 0.78rem;
   line-height: 1.5;
 }
+.audio-analysis {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #28453e;
+  border-radius: 0.8rem;
+  background: #07130f;
+}
+.audio-analysis-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.audio-analysis-heading > div {
+  display: grid;
+  gap: 0.2rem;
+}
+.audio-analysis-heading span,
+.audio-feature-grid span {
+  color: #8da49e;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.audio-analysis-heading strong {
+  font-size: 1.35rem;
+}
+.audio-analysis-heading strong[data-audio-label='speech'] {
+  color: #67e1c7;
+}
+.audio-analysis-heading strong[data-audio-label='silence'] {
+  color: #9bafa9;
+}
+.audio-analysis-heading strong[data-audio-label='noise'] {
+  color: #ffd166;
+}
+.audio-analysis-heading button {
+  padding: 0.55rem 0.75rem;
+  background: #10231e;
+}
+.audio-analysis-heading button[aria-pressed='true'] {
+  color: #062019;
+  border-color: #67e1c7;
+  background: #67e1c7;
+  font-weight: 700;
+}
+.audio-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.55rem;
+}
+.audio-feature-grid div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.6rem;
+  border-radius: 0.55rem;
+  background: #10231e;
+}
+.audio-feature-grid strong {
+  font-size: 0.9rem;
+}
+.audio-analysis > p {
+  margin: 0;
+  color: #829b94;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -463,7 +531,8 @@ audio {
 @media (max-width: 520px) {
   .status-grid,
   .metric-grid,
-  .quality-grid {
+  .quality-grid,
+  .audio-feature-grid {
     grid-template-columns: 1fr;
   }
   .metric-grid .wide {
@@ -477,6 +546,10 @@ audio {
   .quality-summary p,
   .ml-summary p {
     text-align: left;
+  }
+  .audio-analysis-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
   .join-row {
     grid-template-columns: 1fr;

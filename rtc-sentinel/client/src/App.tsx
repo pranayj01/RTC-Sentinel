@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
+  analyzeAudio,
   predictQuality,
+  type AudioAnalysis,
   type MlQualityPrediction,
   type PublicUser,
 } from './authApi';
@@ -232,13 +234,23 @@ function CallWorkspace({
   guest?: boolean;
   onExit(): void;
 }) {
-  const call = useWebRtcCall(accessToken, guest);
   const [roomInput, setRoomInput] = useState('');
+  const [audioAnalysisEnabled, setAudioAnalysisEnabled] = useState(false);
+  const call = useWebRtcCall(
+    accessToken,
+    guest,
+    audioAnalysisEnabled && !guest,
+  );
   const [mlPrediction, setMlPrediction] = useState<MlQualityPrediction | null>(
     null,
   );
   const [mlPending, setMlPending] = useState(false);
   const [mlError, setMlError] = useState(false);
+  const [audioAnalysis, setAudioAnalysis] = useState<AudioAnalysis | null>(
+    null,
+  );
+  const [audioPending, setAudioPending] = useState(false);
+  const [audioError, setAudioError] = useState(false);
   const active =
     call.status !== 'idle' &&
     call.status !== 'ended' &&
@@ -280,6 +292,33 @@ function CallWorkspace({
       current = false;
     };
   }, [accessToken, call.qosMetric, guest]);
+
+  useEffect(() => {
+    if (guest || !audioAnalysisEnabled) {
+      setAudioAnalysis(null);
+      setAudioPending(false);
+      setAudioError(false);
+      return;
+    }
+    if (!call.audioChunk) return;
+
+    let current = true;
+    setAudioPending(true);
+    setAudioError(false);
+    void analyzeAudio(accessToken, call.audioChunk)
+      .then((analysis) => {
+        if (current) setAudioAnalysis(analysis);
+      })
+      .catch(() => {
+        if (current) setAudioError(true);
+      })
+      .finally(() => {
+        if (current) setAudioPending(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [accessToken, audioAnalysisEnabled, call.audioChunk, guest]);
 
   const signOut = () => {
     if (active) call.endCall();
@@ -418,6 +457,78 @@ function CallWorkspace({
                   ? 'The local rule score remains available. Sign in to enable server-side ML predictions.'
                   : 'The rule score applies fixed thresholds. The ML prediction compares the current measurements with learned examples; confidence means how certain the model is, not the percentage quality of the call.'}
               </p>
+              <section
+                className="audio-analysis"
+                aria-label="Audio signal analysis"
+              >
+                <div className="audio-analysis-heading">
+                  <div>
+                    <span>Audio signal analysis</span>
+                    <strong
+                      data-audio-label={audioAnalysis?.label ?? 'waiting'}
+                    >
+                      {guest
+                        ? 'Sign in required'
+                        : !audioAnalysisEnabled
+                          ? 'Off'
+                          : audioPending && !audioAnalysis
+                            ? 'Analyzing…'
+                            : audioError
+                              ? 'Unavailable'
+                              : audioAnalysis
+                                ? titleCase(audioAnalysis.label)
+                                : 'Waiting for sample'}
+                    </strong>
+                  </div>
+                  {!guest && (
+                    <button
+                      type="button"
+                      aria-pressed={audioAnalysisEnabled}
+                      onClick={() =>
+                        setAudioAnalysisEnabled((enabled) => !enabled)
+                      }
+                    >
+                      {audioAnalysisEnabled
+                        ? 'Disable audio analysis'
+                        : 'Enable audio analysis'}
+                    </button>
+                  )}
+                </div>
+                {audioAnalysis && audioAnalysisEnabled && !audioError && (
+                  <div className="audio-feature-grid">
+                    <div>
+                      <span>Confidence</span>
+                      <strong>
+                        {Math.round(audioAnalysis.confidence * 100)}%
+                      </strong>
+                    </div>
+                    <div>
+                      <span>RMS energy</span>
+                      <strong>
+                        {audioAnalysis.features.rmsEnergy.toFixed(4)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Zero-crossing rate</span>
+                      <strong>
+                        {audioAnalysis.features.zeroCrossingRate.toFixed(3)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Spectral centroid</span>
+                      <strong>
+                        {audioAnalysis.features.spectralCentroidHz.toFixed(0)}{' '}
+                        Hz
+                      </strong>
+                    </div>
+                  </div>
+                )}
+                <p>
+                  {guest
+                    ? 'Sign in to opt in to protected server-side audio classification.'
+                    : 'When enabled, a short microphone frame is classified as speech, silence, or noise every three seconds. Raw audio is not retained, and spoken words are never transcribed.'}
+                </p>
+              </section>
               <div className="metric-grid">
                 <div>
                   <span>Round Trip Time</span>

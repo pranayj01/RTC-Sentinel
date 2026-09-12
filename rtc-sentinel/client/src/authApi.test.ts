@@ -1,4 +1,9 @@
-import { getCurrentUser, predictQuality, register } from './authApi';
+import {
+  analyzeAudio,
+  getCurrentUser,
+  predictQuality,
+  register,
+} from './authApi';
 
 const fetchMock = jest.fn();
 globalThis.fetch = fetchMock;
@@ -66,6 +71,37 @@ test('adds the access token to protected requests', async () => {
       'Bearer access-token',
     );
   }
+});
+
+test('sends PCM frames to the protected audio endpoint', async () => {
+  const analysis = {
+    label: 'speech' as const,
+    confidence: 0.9,
+    durationMs: 341.33,
+    features: {
+      rmsEnergy: 0.1,
+      zeroCrossingRate: 0.08,
+      spectralCentroidHz: 1200,
+      mfcc: Array(13).fill(1),
+      melSpectrogram: Array(16).fill(-20),
+    },
+  };
+  fetchMock.mockResolvedValue({
+    ok: true,
+    json: async () => ({ analysis }),
+  });
+
+  await expect(
+    analyzeAudio('access-token', {
+      encoding: 'pcm_s16le',
+      sampleRate: 48000,
+      pcmBase64: 'AAAA',
+    }),
+  ).resolves.toEqual(analysis);
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/api/analytics/analyze-audio',
+    expect.objectContaining({ method: 'POST' }),
+  );
 });
 
 test('surfaces API error messages', async () => {
