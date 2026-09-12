@@ -26,9 +26,13 @@ async function register(role, suffix) {
   return result.body;
 }
 
-function connectSocket() {
+function connectSocket(accessToken, guest = false) {
   return new Promise((resolve, reject) => {
-    const socket = io(apiUrl, { transports: ['websocket'], forceNew: true });
+    const socket = io(apiUrl, {
+      transports: ['websocket'],
+      forceNew: true,
+      auth: accessToken ? { token: accessToken } : { guest },
+    });
     socket.once('connect', () => resolve(socket));
     socket.once('connect_error', reject);
   });
@@ -73,10 +77,23 @@ const suffix = Date.now();
 const callerAuth = await register('caller', suffix);
 const receiverAuth = await register('receiver', suffix);
 const outsiderAuth = await register('outsider', suffix);
-const caller = await connectSocket();
-const receiver = await connectSocket();
+const caller = await connectSocket(callerAuth.accessToken);
+const receiver = await connectSocket(receiverAuth.accessToken);
+const guest = await connectSocket(undefined, true);
 
 try {
+  const guestRoom = await emit(caller, 'create-room');
+  assert.equal(guestRoom.ok, true);
+  assert.deepEqual(await emit(guest, 'create-room'), {
+    ok: false,
+    error: 'AUTHENTICATION_REQUIRED',
+  });
+  assert.equal(
+    (await emit(guest, 'join-room', { roomId: guestRoom.roomId })).ok,
+    true,
+  );
+  guest.disconnect();
+
   const roomAck = await emit(caller, 'create-room');
   assert.equal(roomAck.ok, true);
   const roomId = roomAck.roomId;
@@ -139,4 +156,5 @@ try {
 } finally {
   caller.disconnect();
   receiver.disconnect();
+  guest.disconnect();
 }
