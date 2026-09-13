@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 0.9.4
+
+- Recover active rooms after temporary WebSocket loss or browser refresh using short-lived, rotating room-resume tokens.
+- Retry Socket.IO connections with bounded acknowledgement timeouts and visible reconnecting states.
+- Detect disconnected or failed ICE connections, retry ICE negotiation, and report terminal relay failures clearly.
+- Delay peer cleanup during brief disconnects and notify the remaining peer when a participant resumes.
+- Add bounded startup retries for PostgreSQL and Redis and per-attempt timeouts and retries for ML requests.
+- Continue signaling with a mirrored in-memory state store when Redis becomes unavailable.
+- Return stable `503` responses when ML analytics is unavailable without interrupting calls or local quality scoring.
+- Add structured JSON request, lifecycle, dependency, call, room, and retry logs with request IDs.
+- Add reliability unit and integration coverage, including live transport, Redis, and ML outage checks.
+
+## 0.9.2
+
+- Move refresh tokens into HttpOnly, SameSite cookies and keep access tokens out of browser storage.
+- Enforce JWT algorithm, issuer, audience, expiry, and strict bearer-token validation.
+- Add logout, cookie-based session restoration, secure cookie-path rewriting, and authentication no-store responses.
+- Add Helmet response headers, exact-origin CORS, bounded JSON requests, and global and authentication rate limits.
+- Validate Socket.IO origins, authentication size, event rate, SDP, ICE, QoS, room IDs, and room membership.
+- Generate room codes cryptographically and retain restricted anonymous guest joining.
+- Bind PostgreSQL, Redis, and FastAPI host ports to loopback and require production secrets in Compose.
+- Override vulnerable transitive query-parser and Prisma configuration dependencies with patched releases.
+- Add adversarial HTTP, authentication, signaling, input, oversized-body, and production-configuration tests.
+- Document the security model, environment controls, deployment requirements, and remaining limitations.
+
 ## 0.9.0
 
 - Add browser registration, sign-in, session restoration, automatic token refresh, and sign-out.

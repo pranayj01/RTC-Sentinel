@@ -11,12 +11,10 @@ export interface PublicUser {
 export interface AuthSession {
   user: PublicUser;
   accessToken: string;
-  refreshToken: string;
 }
 
 interface TokenPair {
   accessToken: string;
-  refreshToken: string;
 }
 
 export interface MlQualityPrediction {
@@ -58,7 +56,11 @@ async function request<T>(
   if (init.body) headers.set('Content-Type', 'application/json');
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
 
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    credentials: init.credentials ?? 'same-origin',
+    headers,
+  });
   const body = (await response.json().catch(() => ({}))) as {
     error?: { code?: string; message?: string };
   } & T;
@@ -93,11 +95,14 @@ export function login(input: {
   });
 }
 
-export function refresh(refreshToken: string): Promise<TokenPair> {
+export function refresh(): Promise<TokenPair> {
   return request<TokenPair>('/auth/refresh', {
     method: 'POST',
-    body: JSON.stringify({ refreshToken }),
   });
+}
+
+export async function logout(): Promise<void> {
+  await request('/auth/logout', { method: 'POST' });
 }
 
 export async function getCurrentUser(accessToken: string): Promise<PublicUser> {

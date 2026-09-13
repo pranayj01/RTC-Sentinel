@@ -1,7 +1,9 @@
 import {
   analyzeAudio,
   getCurrentUser,
+  logout,
   predictQuality,
+  refresh,
   register,
 } from './authApi';
 
@@ -22,7 +24,6 @@ test('registers through the same-origin API gateway', async () => {
       updatedAt: new Date(0).toISOString(),
     },
     accessToken: 'access-token',
-    refreshToken: 'refresh-token',
   };
   fetchMock.mockResolvedValue({
     ok: true,
@@ -38,7 +39,7 @@ test('registers through the same-origin API gateway', async () => {
   ).resolves.toEqual(session);
   expect(fetchMock).toHaveBeenCalledWith(
     '/api/auth/register',
-    expect.objectContaining({ method: 'POST' }),
+    expect.objectContaining({ method: 'POST', credentials: 'same-origin' }),
   );
 });
 
@@ -71,6 +72,41 @@ test('adds the access token to protected requests', async () => {
       'Bearer access-token',
     );
   }
+});
+
+test('refreshes and logs out through the HttpOnly cookie session', async () => {
+  fetchMock
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ accessToken: 'new-access-token' }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('Empty response');
+      },
+    });
+
+  await expect(refresh()).resolves.toEqual({ accessToken: 'new-access-token' });
+  await expect(logout()).resolves.toBeUndefined();
+
+  expect(fetchMock).toHaveBeenNthCalledWith(
+    1,
+    '/api/auth/refresh',
+    expect.objectContaining({
+      method: 'POST',
+      credentials: 'same-origin',
+    }),
+  );
+  expect(fetchMock).toHaveBeenNthCalledWith(
+    2,
+    '/api/auth/logout',
+    expect.objectContaining({
+      method: 'POST',
+      credentials: 'same-origin',
+    }),
+  );
+  expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
 });
 
 test('sends PCM frames to the protected audio endpoint', async () => {

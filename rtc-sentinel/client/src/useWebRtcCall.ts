@@ -15,14 +15,32 @@ import {
   type AudioSampler,
   type PcmAudioChunk,
 } from './audioCapture';
+import {
+  clearActiveCall,
+  readActiveCall,
+  saveActiveCall,
+  type ActiveCallSession,
+  type CallRole,
+} from './callSession';
 
 type Status =
-  'idle' | 'connecting' | 'waiting' | 'connected' | 'ended' | 'error';
-type Ack = { ok: boolean; roomId?: string; error?: string };
+  | 'idle'
+  | 'connecting'
+  | 'waiting'
+  | 'connected'
+  | 'reconnecting'
+  | 'ended'
+  | 'error';
+type Ack = {
+  ok: boolean;
+  roomId?: string;
+  error?: string;
+  peerPresent?: boolean;
+  resumeToken?: string;
+};
 type SignalMessage<T> = { roomId: string; signal: T };
 const SIGNALING_URL =
-  import.meta.env.VITE_SIGNALING_URL ??
-  `http://${window.location.hostname}:3000`;
+  import.meta.env.VITE_SIGNALING_URL ?? window.location.origin;
 const forceRelay =
   new URLSearchParams(window.location.search).get('relay') === '1';
 const iceConfiguration = createIceConfiguration(
@@ -39,12 +57,28 @@ const iceConfiguration = createIceConfiguration(
   forceRelay,
 );
 
+function emitWithAck(
+  socket: Socket,
+  event: string,
+  payload?: unknown,
+): Promise<Ack> {
+  return new Promise((resolve, reject) => {
+    const acknowledge = (error: Error | null, response: Ack) => {
+      if (error) reject(error);
+      else resolve(response);
+    };
+    if (payload === undefined) socket.timeout(5_000).emit(event, acknowledge);
+    else socket.timeout(5_000).emit(event, payload, acknowledge);
+  });
+}
+
 export interface WebRtcCall {
   roomId: string;
   status: Status;
   statusLabel: string;
   muted: boolean;
   error: string;
+  recoveryMessage: string;
   candidateType: string;
   qosMetric: QosMetric | null;
   qosHistory: QosMetric[];
@@ -71,6 +105,13 @@ export function useWebRtcCall(
   const streamRef = useRef<MediaStream | null>(null);
   const audioSamplerRef = useRef<AudioSampler | null>(null);
   const roomRef = useRef('');
+  const roleRef = useRef<CallRole | null>(null);
+  const resumeTokenRef = useRef('');
+  const iceRecoveryTimer = useRef<number | undefined>(undefined);
+  const iceRecoveryAttempts = useRef(0);
+  const sendOfferRef = useRef<(iceRestart?: boolean) => Promise<void>>(
+    async () => undefined,
+  );
   const pendingIce = useRef<RTCIceCandidateInit[]>([]);
   const qosBaseline = useRef<QosBaseline | undefined>(undefined);
   const qosTimer = useRef<number | undefined>(undefined);
@@ -81,6 +122,7 @@ export function useWebRtcCall(
   const [status, setStatus] = useState<Status>('idle');
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState('');
+  const [recoveryMessage, setRecoveryMessage] = useState('');
   const [candidateType, setCandidateType] = useState('discovering');
   const [qosMetric, setQosMetric] = useState<QosMetric | null>(null);
   const [qosHistory, setQosHistory] = useState<QosMetric[]>([]);
@@ -116,48 +158,50 @@ export function useWebRtcCall(
     collectingQos.current = false;
   }, []);
 
-  const startMonitoring = useCallback(
-    (peer: RTCPeerConnection) => {
-      stopMonitoring();
-      setDurationSeconds(0);
-      const startedAt = Date.now();
-      const sample = async () => {
-        if (collectingQos.current || peer.connectionState !== 'connected')
-          return;
-        collectingQos.current = true;
-        try {
-          const result = await collectQosMetric(peer, qosBaseline.current);
-          qosBaseline.current = result.baseline;
-          setQosMetric(result.metric);
-          setQuality(assessCallQuality(result.metric));
-          setQosHistory((history) => [...history, result.metric].slice(-20));
-          if (result.metric.candidateType)
-            setCandidateType(result.metric.candidateType);
-          if (roomRef.current) {
-            socketRef.current?.emit(
-              'qos-metric',
-              { roomId: roomRef.current, metric: result.metric },
-              () => undefined,
+  const startMonitoring = useCallback((peer: RTCPeerConnection) => {
+    if (qosTimer.current) return;
+    setDurationSeconds(0);
+    const startedAt = Date.now();
+    const sample = async () => {
+      if (collectingQos.current || peer.connectionState !== 'connected') return;
+      collectingQos.current = true;
+      try {
+        const result = await collectQosMetric(peer, qosBaseline.current);
+        qosBaseline.current = result.baseline;
+        setQosMetric(result.metric);
+        setQuality(assessCallQuality(result.metric));
+        setQosHistory((history) => [...history, result.metric].slice(-20));
+        if (result.metric.candidateType)
+          setCandidateType(result.metric.candidateType);
+        if (roomRef.current) {
+          socketRef.current?.emit(
+            'qos-metric',
+            { roomId: roomRef.current, metric: result.metric },
+            () => undefined,
+          );
+          if (roleRef.current && resumeTokenRef.current)
+            saveActiveCall(
+              roomRef.current,
+              roleRef.current,
+              resumeTokenRef.current,
             );
-          }
-          if (audioAnalysisEnabledRef.current && audioSamplerRef.current) {
-            setAudioChunk(audioSamplerRef.current.sample());
-          }
-        } catch {
-          /* A later interval retries transient stats failures. */
-        } finally {
-          collectingQos.current = false;
         }
-      };
-      void sample();
-      qosTimer.current = window.setInterval(() => void sample(), 3000);
-      durationTimer.current = window.setInterval(
-        () => setDurationSeconds(Math.floor((Date.now() - startedAt) / 1000)),
-        1000,
-      );
-    },
-    [stopMonitoring],
-  );
+        if (audioAnalysisEnabledRef.current && audioSamplerRef.current) {
+          setAudioChunk(audioSamplerRef.current.sample());
+        }
+      } catch {
+        /* A later interval retries transient stats failures. */
+      } finally {
+        collectingQos.current = false;
+      }
+    };
+    void sample();
+    qosTimer.current = window.setInterval(() => void sample(), 3000);
+    durationTimer.current = window.setInterval(
+      () => setDurationSeconds(Math.floor((Date.now() - startedAt) / 1000)),
+      1000,
+    );
+  }, []);
 
   const ensureMedia = useCallback(async () => {
     if (streamRef.current) return streamRef.current;
@@ -198,7 +242,19 @@ export function useWebRtcCall(
     };
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === 'connected') {
+        if (iceRecoveryTimer.current)
+          window.clearTimeout(iceRecoveryTimer.current);
+        iceRecoveryTimer.current = undefined;
+        iceRecoveryAttempts.current = 0;
+        setError('');
+        setRecoveryMessage('');
         setStatus('connected');
+        if (roomRef.current && roleRef.current && resumeTokenRef.current)
+          saveActiveCall(
+            roomRef.current,
+            roleRef.current,
+            resumeTokenRef.current,
+          );
         socketRef.current?.emit(
           'call-start',
           { roomId: roomRef.current },
@@ -213,20 +269,77 @@ export function useWebRtcCall(
         void inspect();
       }
       if (['failed', 'disconnected'].includes(peer.connectionState)) {
-        setError('Peer connection was lost.');
-        setStatus('error');
+        setStatus('reconnecting');
+        setRecoveryMessage('Network interrupted. Trying to reconnect…');
+        if (!iceRecoveryTimer.current) {
+          const delay = peer.connectionState === 'failed' ? 0 : 4_000;
+          iceRecoveryTimer.current = window.setTimeout(() => {
+            iceRecoveryTimer.current = undefined;
+            if (!['failed', 'disconnected'].includes(peer.connectionState))
+              return;
+            if (iceRecoveryAttempts.current >= 2) {
+              stopMonitoring();
+              setRecoveryMessage('');
+              setError(
+                forceRelay
+                  ? 'The TURN relay could not be reached.'
+                  : 'The peer connection could not be recovered.',
+              );
+              setStatus('error');
+              return;
+            }
+            iceRecoveryAttempts.current += 1;
+            peer.restartIce();
+            if (roleRef.current === 'host' && socketRef.current?.connected) {
+              void sendOfferRef.current(true).catch(() => {
+                setRecoveryMessage(
+                  'Waiting for the signaling server to recover…',
+                );
+              });
+            }
+            iceRecoveryTimer.current = window.setTimeout(() => {
+              iceRecoveryTimer.current = undefined;
+              if (['failed', 'disconnected'].includes(peer.connectionState))
+                peer.onconnectionstatechange?.(
+                  new Event('connectionstatechange'),
+                );
+            }, 7_000);
+          }, delay);
+        }
       }
       if (peer.connectionState === 'closed') setStatus('ended');
     };
     peerRef.current = peer;
     return peer;
-  }, [ensureMedia, startMonitoring]);
+  }, [ensureMedia, startMonitoring, stopMonitoring]);
+
+  const sendOffer = useCallback(
+    async (iceRestart = false) => {
+      const socket = socketRef.current;
+      if (!socket?.connected || !roomRef.current)
+        throw new Error('Signaling is unavailable');
+      const peer = await ensurePeer();
+      const offer = await peer.createOffer({ iceRestart });
+      await peer.setLocalDescription(offer);
+      const ack = await emitWithAck(socket, 'offer', {
+        roomId: roomRef.current,
+        signal: offer,
+      });
+      if (!ack.ok) throw new Error(ack.error ?? 'Offer was rejected');
+    },
+    [ensurePeer],
+  );
+  sendOfferRef.current = sendOffer;
 
   const closePeer = useCallback(
     (stopMedia = true) => {
       stopMonitoring();
       peerRef.current?.close();
       peerRef.current = null;
+      if (iceRecoveryTimer.current)
+        window.clearTimeout(iceRecoveryTimer.current);
+      iceRecoveryTimer.current = undefined;
+      iceRecoveryAttempts.current = 0;
       pendingIce.current = [];
       if (stopMedia) {
         audioSamplerRef.current?.close();
@@ -278,25 +391,107 @@ export function useWebRtcCall(
   useEffect(() => {
     const socket = io(SIGNALING_URL, {
       transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: Number.POSITIVE_INFINITY,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5_000,
+      randomizationFactor: 0.4,
+      timeout: 5_000,
       auth: accessTokenRef.current
         ? { token: accessTokenRef.current }
         : { guest: guestRef.current },
     });
     socketRef.current = socket;
+    const resumeRoom = async (session: ActiveCallSession) => {
+      roomRef.current = session.roomId;
+      roleRef.current = session.role;
+      resumeTokenRef.current = session.resumeToken;
+      setRoomId(session.roomId);
+      setStatus('reconnecting');
+      setRecoveryMessage('Restoring the active call…');
+      try {
+        const ack = await emitWithAck(socket, 'resume-room', {
+          roomId: session.roomId,
+          resumeToken: session.resumeToken,
+        });
+        if (!ack.ok || !ack.roomId || !ack.resumeToken) {
+          clearActiveCall();
+          roomRef.current = '';
+          roleRef.current = null;
+          resumeTokenRef.current = '';
+          closePeer();
+          setRecoveryMessage('');
+          setError('The previous call session has expired.');
+          setStatus('ended');
+          return;
+        }
+        resumeTokenRef.current = ack.resumeToken;
+        saveActiveCall(ack.roomId, session.role, ack.resumeToken);
+        await ensureMedia();
+        setRecoveryMessage('');
+        setError('');
+        if (peerRef.current?.connectionState === 'connected') {
+          setStatus('connected');
+          return;
+        }
+        if (!ack.peerPresent) {
+          setStatus('waiting');
+          return;
+        }
+        setStatus('connecting');
+        await ensurePeer();
+        if (session.role === 'host') await sendOffer(true);
+      } catch {
+        setStatus('reconnecting');
+        setRecoveryMessage('Signaling is unavailable. Retrying…');
+      }
+    };
+    socket.on('connect', () => {
+      const active =
+        roomRef.current && roleRef.current && resumeTokenRef.current
+          ? {
+              roomId: roomRef.current,
+              role: roleRef.current,
+              resumeToken: resumeTokenRef.current,
+              savedAt: Date.now(),
+            }
+          : readActiveCall();
+      if (!active) {
+        setRecoveryMessage('');
+        return;
+      }
+      if (socket.recovered && peerRef.current) {
+        setRecoveryMessage('');
+        setError('');
+        setStatus(
+          peerRef.current.connectionState === 'connected'
+            ? 'connected'
+            : 'reconnecting',
+        );
+        return;
+      }
+      void resumeRoom(active);
+    });
+    socket.on('disconnect', () => {
+      if (!roomRef.current) return;
+      setStatus('reconnecting');
+      setRecoveryMessage('Signaling interrupted. Reconnecting…');
+    });
     socket.on('peer-joined', async () => {
       try {
         setStatus('connecting');
-        const peer = await ensurePeer();
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        socket.emit(
-          'offer',
-          { roomId: roomRef.current, signal: offer },
-          () => undefined,
-        );
+        await sendOffer();
       } catch {
-        /* ensureMedia reports errors */
+        setRecoveryMessage('Waiting for signaling to recover…');
       }
+    });
+    socket.on('peer-reconnected', () => {
+      if (roleRef.current !== 'host') return;
+      setStatus('reconnecting');
+      setRecoveryMessage('Reconnecting to the other participant…');
+      void sendOffer(true).catch(() => {
+        setRecoveryMessage('Waiting for signaling to recover…');
+      });
     });
     socket.on(
       'offer',
@@ -348,25 +543,35 @@ export function useWebRtcCall(
       },
     );
     const peerLeft = () => {
+      clearActiveCall();
+      roomRef.current = '';
+      roleRef.current = null;
+      resumeTokenRef.current = '';
       closePeer();
       setError('The other participant left the call.');
+      setRecoveryMessage('');
       setStatus('ended');
     };
     socket.on('peer-left', peerLeft);
     socket.on('call-end', peerLeft);
     socket.on('connect_error', () => {
-      setError('Signaling server is unavailable.');
-      setStatus('error');
+      if (roomRef.current || readActiveCall()) {
+        setStatus('reconnecting');
+        setRecoveryMessage('Signaling is unavailable. Retrying…');
+      } else {
+        setError('Signaling server is unavailable.');
+      }
     });
     return () => {
       closePeer();
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [closePeer, ensurePeer]);
+  }, [closePeer, ensureMedia, ensurePeer, sendOffer]);
 
   const createCall = useCallback(async () => {
     setError('');
+    setRecoveryMessage('');
     setStatus('connecting');
     setQosMetric(null);
     setQosHistory([]);
@@ -383,25 +588,29 @@ export function useWebRtcCall(
     }
     try {
       const socket = await waitForSignaling();
-      socket.emit('create-room', (ack: Ack) => {
-        if (!ack.ok || !ack.roomId) {
-          setError('Unable to create a room.');
-          setStatus('error');
-          return;
-        }
-        roomRef.current = ack.roomId;
-        setRoomId(ack.roomId);
-        setStatus('waiting');
-      });
+      const ack = await emitWithAck(socket, 'create-room');
+      if (!ack.ok || !ack.roomId || !ack.resumeToken) {
+        closePeer();
+        setError('Unable to create a room.');
+        setStatus('error');
+        return;
+      }
+      roomRef.current = ack.roomId;
+      roleRef.current = 'host';
+      resumeTokenRef.current = ack.resumeToken;
+      saveActiveCall(ack.roomId, 'host', ack.resumeToken);
+      setRoomId(ack.roomId);
+      setStatus('waiting');
     } catch {
       setError('Signaling server is unavailable.');
       setStatus('error');
     }
-  }, [ensureMedia, waitForSignaling]);
+  }, [closePeer, ensureMedia, waitForSignaling]);
 
   const joinCall = useCallback(
     async (requestedRoom: string) => {
       setError('');
+      setRecoveryMessage('');
       setStatus('connecting');
       setQosMetric(null);
       setQosHistory([]);
@@ -418,25 +627,25 @@ export function useWebRtcCall(
       }
       try {
         const socket = await waitForSignaling();
-        socket.emit(
-          'join-room',
-          { roomId: requestedRoom.trim().toUpperCase() },
-          (ack: Ack) => {
-            if (!ack.ok || !ack.roomId) {
-              closePeer();
-              setError(
-                ack.error === 'ROOM_FULL'
-                  ? 'This room already has two participants.'
-                  : 'Room not found.',
-              );
-              setStatus('error');
-              return;
-            }
-            roomRef.current = ack.roomId;
-            setRoomId(ack.roomId);
-            setStatus('connecting');
-          },
-        );
+        const ack = await emitWithAck(socket, 'join-room', {
+          roomId: requestedRoom.trim().toUpperCase(),
+        });
+        if (!ack.ok || !ack.roomId || !ack.resumeToken) {
+          closePeer();
+          setError(
+            ack.error === 'ROOM_FULL'
+              ? 'This room already has two participants.'
+              : 'Room not found.',
+          );
+          setStatus('error');
+          return;
+        }
+        roomRef.current = ack.roomId;
+        roleRef.current = 'participant';
+        resumeTokenRef.current = ack.resumeToken;
+        saveActiveCall(ack.roomId, 'participant', ack.resumeToken);
+        setRoomId(ack.roomId);
+        setStatus('connecting');
       } catch {
         setError('Signaling server is unavailable.');
         setStatus('error');
@@ -465,10 +674,14 @@ export function useWebRtcCall(
         () => undefined,
       );
     }
+    clearActiveCall();
     roomRef.current = '';
+    roleRef.current = null;
+    resumeTokenRef.current = '';
     closePeer();
     setMuted(false);
     setCandidateType('discovering');
+    setRecoveryMessage('');
     setStatus('ended');
   }, [closePeer]);
   const labels: Record<Status, string> = {
@@ -476,6 +689,7 @@ export function useWebRtcCall(
     connecting: 'Connecting',
     waiting: 'Waiting for peer',
     connected: 'Connected',
+    reconnecting: 'Reconnecting',
     ended: 'Ended',
     error: 'Error',
   };
@@ -485,6 +699,7 @@ export function useWebRtcCall(
     statusLabel: labels[status],
     muted,
     error,
+    recoveryMessage,
     candidateType,
     qosMetric,
     qosHistory,

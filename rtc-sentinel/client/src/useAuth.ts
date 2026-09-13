@@ -3,23 +3,14 @@ import {
   ApiError,
   getCurrentUser,
   login as loginRequest,
+  logout as logoutRequest,
   refresh,
   register as registerRequest,
   type AuthSession,
   type PublicUser,
 } from './authApi';
 
-const STORAGE_KEY = 'rtc-sentinel.auth';
-
-function readStoredSession(): AuthSession | null {
-  try {
-    const value = localStorage.getItem(STORAGE_KEY);
-    return value ? (JSON.parse(value) as AuthSession) : null;
-  } catch {
-    localStorage.removeItem(STORAGE_KEY);
-    return null;
-  }
-}
+const LEGACY_STORAGE_KEY = 'rtc-sentinel.auth';
 
 function millisecondsUntilRefresh(token: string): number {
   try {
@@ -55,36 +46,25 @@ export function useAuth(): Authentication {
   const saveSession = useCallback((next: AuthSession | null) => {
     sessionRef.current = next;
     setSession(next);
-    if (next) localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    else localStorage.removeItem(STORAGE_KEY);
   }, []);
 
   const refreshSession = useCallback(async () => {
     const current = sessionRef.current;
     if (!current) throw new ApiError('No active session.', 401);
-    const tokens = await refresh(current.refreshToken);
+    const tokens = await refresh();
     saveSession({ ...current, ...tokens });
   }, [saveSession]);
 
   useEffect(() => {
     let active = true;
     const restore = async () => {
-      const stored = readStoredSession();
-      if (!stored) {
-        if (active) setLoading(false);
-        return;
-      }
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
       try {
-        const user = await getCurrentUser(stored.accessToken);
-        if (active) saveSession({ ...stored, user });
+        const tokens = await refresh();
+        const user = await getCurrentUser(tokens.accessToken);
+        if (active) saveSession({ user, ...tokens });
       } catch {
-        try {
-          const tokens = await refresh(stored.refreshToken);
-          const user = await getCurrentUser(tokens.accessToken);
-          if (active) saveSession({ user, ...tokens });
-        } catch {
-          if (active) saveSession(null);
-        }
+        if (active) saveSession(null);
       } finally {
         if (active) setLoading(false);
       }
@@ -115,7 +95,10 @@ export function useAuth(): Authentication {
     },
     [saveSession],
   );
-  const logout = useCallback(() => saveSession(null), [saveSession]);
+  const logout = useCallback(() => {
+    saveSession(null);
+    void logoutRequest().catch(() => undefined);
+  }, [saveSession]);
 
   return {
     loading,

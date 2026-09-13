@@ -1,4 +1,7 @@
-import { MemoryRealtimeStateStore } from './realtimeState.js';
+import {
+  MemoryRealtimeStateStore,
+  ResilientRealtimeStateStore,
+} from './realtimeState.js';
 
 const metric = {
   timestamp: new Date('2026-09-11T10:00:00.000Z'),
@@ -71,6 +74,48 @@ describe('real-time state lifecycle', () => {
     );
   });
 
+  it('replaces a disconnected socket while preserving its room', async () => {
+    const state = new MemoryRealtimeStateStore();
+    await state.registerSocket('socket-old');
+    await state.registerSocket('socket-new');
+    await state.createRoom('ABC123', 'socket-old');
+    await state.setRoomResumeToken('ABC123', 'socket-old', 'resume-token');
+
+    await expect(
+      state.resumeRoom('ABC123', 'resume-token', 'socket-new'),
+    ).resolves.toEqual({
+      result: 'JOINED',
+      previousSocketId: 'socket-old',
+    });
+    await expect(
+      state.resumeRoom('ABC123', 'resume-token', 'socket-old'),
+    ).resolves.toEqual({ result: 'RESUME_INVALID' });
+    await expect(state.getRoomMembers('ABC123')).resolves.toEqual([
+      'socket-new',
+    ]);
+    await expect(state.unregisterSocket('socket-old')).resolves.toEqual([]);
+    await expect(state.getRoomMembers('ABC123')).resolves.toEqual([
+      'socket-new',
+    ]);
+  });
+
+  it('expires browser resume tokens independently of the room', async () => {
+    let now = 1_000;
+    const state = new MemoryRealtimeStateStore(3600, () => now, 2);
+    await state.registerSocket('socket-old');
+    await state.registerSocket('socket-new');
+    await state.createRoom('ABC123', 'socket-old');
+    await state.setRoomResumeToken('ABC123', 'socket-old', 'resume-token');
+    now += 2_001;
+
+    await expect(
+      state.resumeRoom('ABC123', 'resume-token', 'socket-new'),
+    ).resolves.toEqual({ result: 'RESUME_INVALID' });
+    await expect(state.getRoomMembers('ABC123')).resolves.toEqual([
+      'socket-old',
+    ]);
+  });
+
   it('buffers recent QoS metrics and expires them', async () => {
     let now = 1_000;
     const state = new MemoryRealtimeStateStore(2, () => now);
@@ -78,5 +123,27 @@ describe('real-time state lifecycle', () => {
     await expect(state.getRecentMetrics('ABC123')).resolves.toEqual([metric]);
     now += 2_001;
     await expect(state.getRecentMetrics('ABC123')).resolves.toEqual([]);
+  });
+});
+
+describe('resilient real-time state', () => {
+  it('continues from its mirrored memory state after Redis fails', async () => {
+    const primary = new MemoryRealtimeStateStore();
+    const fallback = new MemoryRealtimeStateStore();
+    const state = new ResilientRealtimeStateStore(primary, fallback);
+    await state.registerSocket('socket-a');
+    await state.createRoom('ABC123', 'socket-a');
+
+    jest
+      .spyOn(primary, 'getRoomMembers')
+      .mockRejectedValue(new Error('Redis unavailable'));
+
+    await expect(state.getRoomMembers('ABC123')).resolves.toEqual(['socket-a']);
+    await state.registerSocket('socket-b');
+    await expect(state.joinRoom('ABC123', 'socket-b')).resolves.toBe('JOINED');
+    await expect(state.getRoomMembers('ABC123')).resolves.toEqual([
+      'socket-a',
+      'socket-b',
+    ]);
   });
 });
