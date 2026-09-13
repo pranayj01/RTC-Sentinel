@@ -21,8 +21,7 @@ type Status =
 type Ack = { ok: boolean; roomId?: string; error?: string };
 type SignalMessage<T> = { roomId: string; signal: T };
 const SIGNALING_URL =
-  import.meta.env.VITE_SIGNALING_URL ??
-  `http://${window.location.hostname}:3000`;
+  import.meta.env.VITE_SIGNALING_URL ?? window.location.origin;
 const forceRelay =
   new URLSearchParams(window.location.search).get('relay') === '1';
 const iceConfiguration = createIceConfiguration(

@@ -19,6 +19,7 @@ jobs:
           cache: pip
           cache-dependency-path: ml-service/requirements-dev.txt
       - run: npm install
+      - run: npm audit --omit=dev --audit-level=moderate
       - run: npm run lint
       - run: npm run build
       - run: npm test
@@ -31,6 +32,13 @@ jobs:
 
   compose:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: rtc-sentinel-ci-postgres-password
+      JWT_ACCESS_SECRET: rtc-sentinel-ci-access-secret-32-characters
+      JWT_REFRESH_SECRET: rtc-sentinel-ci-refresh-secret-32-characters
+      TURN_CREDENTIAL: rtc-sentinel-ci-turn-credential
+      CORS_ORIGINS: http://localhost:5173
+      COOKIE_SECURE: 'false'
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
@@ -43,6 +51,7 @@ jobs:
           curl --fail http://localhost:8000/model/info | grep '"type":"machine-learning"'
           curl --fail http://localhost:8000/audio/model/info | grep '"type":"machine-learning"'
           node server/scripts/analytics-smoke.mjs
+          node server/scripts/security-smoke.mjs
           docker compose exec -T postgres pg_isready -U rtc_sentinel -d rtc_sentinel
           test "$(docker compose exec -T redis redis-cli ping | tr -d '\r')" = 'PONG'
       - if: always()

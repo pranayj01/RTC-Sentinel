@@ -1,13 +1,20 @@
 import { app } from './app.js';
-import { connectDependencies, disconnectDependencies, prisma, redis } from './dependencies.js';
+import {
+  connectDependencies,
+  disconnectDependencies,
+  prisma,
+  redis,
+} from './dependencies.js';
 import { createServer } from 'node:http';
 import { attachSignaling } from './signaling.js';
 import { RedisRealtimeStateStore } from './realtimeState.js';
 import { PrismaMetricRepository } from './metrics/metricRepository.js';
+import { validateProductionSecurity } from './security.js';
 
 const port = Number(process.env.PORT ?? 3000);
 
 async function start(): Promise<void> {
+  validateProductionSecurity();
   await connectDependencies();
   const server = createServer(app);
   const realtimeTtlSeconds = Number(process.env.REALTIME_TTL_SECONDS ?? 3600);

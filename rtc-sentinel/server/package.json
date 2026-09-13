@@ -1,6 +1,6 @@
 {
   "name": "server",
-  "version": "0.9.0",
+  "version": "0.9.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,13 +11,17 @@
     "test": "jest --runInBand",
     "smoke:analytics": "node scripts/analytics-smoke.mjs",
     "smoke:quality": "node scripts/quality-smoke.mjs",
+    "smoke:security": "node scripts/security-smoke.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
     "bcryptjs": "^3.0.2",
+    "cors": "2.8.6",
     "express": "^4.21.2",
+    "express-rate-limit": "8.7.0",
+    "helmet": "8.3.0",
     "jsonwebtoken": "^9.0.2",
     "redis": "^4.7.0",
     "socket.io": "^4.8.1",
@@ -25,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@types/cors": "2.8.19",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.7",

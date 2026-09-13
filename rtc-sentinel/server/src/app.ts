@@ -14,6 +14,7 @@ import { createAnalyticsRouter } from './analytics/routes.js';
 import { HttpQualityPredictor } from './analytics/qualityClient.js';
 import { HttpAudioAnalyzer } from './analytics/audioClient.js';
 import type { AudioAnalyzer, QualityPredictor } from './analytics/types.js';
+import { applyHttpSecurity, type HttpSecurityOptions } from './security.js';
 
 export function createApp(
   users: UserRepository = new PrismaUserRepository(prisma),
@@ -22,11 +23,11 @@ export function createApp(
   metrics: MetricRepository = new PrismaMetricRepository(prisma),
   qualityPredictor: QualityPredictor = new HttpQualityPredictor(),
   audioAnalyzer: AudioAnalyzer = new HttpAudioAnalyzer(),
+  securityOptions: HttpSecurityOptions = {},
 ) {
   const app = express();
 
-  app.disable('x-powered-by');
-  app.use(express.json());
+  applyHttpSecurity(app, securityOptions);
 
   app.get('/health', (_request, response) =>
     response.status(200).json({ status: 'ok' }),
@@ -36,6 +37,20 @@ export function createApp(
   app.use(createMetricRouter(calls, metrics));
   app.use(createAnalyticsRouter(qualityPredictor, audioAnalyzer));
   const errors: ErrorRequestHandler = (error, _request, response, _next) => {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'type' in error &&
+      error.type === 'entity.too.large'
+    ) {
+      response.status(413).json({
+        error: {
+          code: 'PAYLOAD_TOO_LARGE',
+          message: 'Request body exceeds the allowed size',
+        },
+      });
+      return;
+    }
     if (error instanceof ZodError) {
       response.status(400).json({
         error: {

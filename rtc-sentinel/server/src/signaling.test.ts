@@ -13,6 +13,7 @@ describe('Socket.IO signaling', () => {
 
   beforeEach(async () => {
     process.env.JWT_ACCESS_SECRET = 'test-access-secret';
+    process.env.SOCKET_RATE_LIMIT_MAX = '3';
     httpServer = createServer();
     signaling = attachSignaling(httpServer);
     await new Promise<void>((resolve) =>
@@ -106,6 +107,26 @@ describe('Socket.IO signaling', () => {
     ).rejects.toThrow('Authentication required');
   });
 
+  it('rejects invalid access tokens and disallowed browser origins', async () => {
+    await expect(connect('not-a-jwt')).rejects.toThrow(
+      'Invalid or expired token',
+    );
+
+    const wrongOrigin = createClient(url, {
+      transports: ['websocket'],
+      forceNew: true,
+      auth: { token: createAccessToken('origin-test') },
+      extraHeaders: { Origin: 'https://attacker.example' },
+    });
+    clients.push(wrongOrigin);
+    await expect(
+      new Promise<void>((resolve, reject) => {
+        wrongOrigin.once('connect', resolve);
+        wrongOrigin.once('connect_error', reject);
+      }),
+    ).rejects.toThrow();
+  });
+
   it('allows guests to join an existing room but not create one', async () => {
     const host = await connect();
     const guest = await connectGuest();
@@ -124,7 +145,7 @@ describe('Socket.IO signaling', () => {
     const client = await connect();
     const result = await createRoom(client);
     expect(result).toMatchObject({ ok: true });
-    expect(result.roomId).toMatch(/^[A-F0-9]{6}$/);
+    expect(result.roomId).toMatch(/^[A-Z0-9]{6}$/);
     expect(await signaling.state.getRoomMembers(result.roomId!)).toContain(
       client.id,
     );
@@ -152,6 +173,36 @@ describe('Socket.IO signaling', () => {
       signal,
       from: first.id,
     });
+  });
+
+  it('rejects malformed SDP and signaling from a non-member', async () => {
+    const { first, roomId } = await joinedPair();
+    await expect(
+      emitAck(first, 'offer', {
+        roomId,
+        signal: { type: 'answer', sdp: 'wrong type' },
+      }),
+    ).resolves.toEqual({ ok: false, error: 'INVALID_SIGNAL' });
+
+    const outsider = await connect();
+    await expect(
+      emitAck(outsider, 'offer', {
+        roomId,
+        signal: { type: 'offer', sdp: 'unauthorized' },
+      }),
+    ).resolves.toEqual({ ok: false, error: 'NOT_IN_ROOM' });
+  });
+
+  it('rate limits excessive signaling events per socket', async () => {
+    const client = await connect();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        emitAck(client, 'join-room', { roomId: 'BAD' }),
+      ).resolves.toEqual({ ok: false, error: 'INVALID_ROOM' });
+    }
+    await expect(
+      emitAck(client, 'join-room', { roomId: 'BAD' }),
+    ).resolves.toEqual({ ok: false, error: 'RATE_LIMITED' });
   });
 
   it('handles disconnect and notifies the peer', async () => {
