@@ -1,0 +1,18 @@
+# Résumé claim evidence
+
+This matrix maps each résumé statement to implemented, executable evidence.
+
+| Claim                                                                                                                         | Implementation evidence                                                                                                                                               | Verification                                                                                                                                                                                                                        |
+| ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Real-time WebRTC voice with Node.js, Express, Socket.IO, SDP, ICE, and STUN/TURN traversal                                    | `client/src/useWebRtcCall.ts`, `client/src/iceConfig.ts`, `server/src/signaling.ts`, and `infrastructure/coturn/turnserver.conf`                                      | `server/src/signaling.test.ts` validates signaling rules. `e2e/call-flow.spec.ts` negotiates real browser calls and requires both relay-only peers to report `RELAY`.                                                               |
+| Secure authentication, call/session APIs, JWT, PostgreSQL, Redis, validation, and middleware                                  | `server/src/auth`, `server/src/calls`, `server/src/calls/realtimeLifecycle.ts`, `server/src/realtimeState.ts`, `server/src/security.ts`, and Prisma models/migrations | Jest/Supertest cover authentication, authorization, lifecycle rules, validation, persistence, and realtime state. The signed-in browser test proves signaling automatically creates, connects, and ends the PostgreSQL call record. |
+| Live WebRTC QoS pipeline using `getStats()` for RTT, jitter, packet loss, bitrate, codec, and connection metrics              | `client/src/qos.ts`, `client/src/quality.ts`, `server/src/metrics`, and the `CallMetric` Prisma model                                                                 | Unit tests cover extraction and scoring. The browser test waits for a real Chromium RTT sample and then verifies its metric row through the participant-protected API.                                                              |
+| Python ML and audio processing classify network quality and audio conditions; the distributed system runs with Docker Compose | `ml-service/app`, both training entry points, FastAPI routes, Node analytics proxy routes, Dockerfiles, and `docker-compose.yml`                                      | Ruff and 18 pytest cases validate both models and APIs. Analytics smoke tests exercise both Node-to-FastAPI prediction paths. Compose builds and runs React/Nginx, Express, FastAPI, PostgreSQL, Redis, and Coturn together.        |
+
+## Accuracy boundary
+
+The network and audio classifiers are real trained and serialized classical-ML
+pipelines, but their bundled training datasets are reproducible synthetic starter
+data. They demonstrate feature extraction, training, evaluation, serving, and UI
+integration; they do not establish production accuracy on real calls or real-world
+audio. See [the QoS model report](ml-model.md) and [audio model report](audio-analysis.md).

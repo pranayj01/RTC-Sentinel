@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Synchronize authenticated WebRTC room joins, connections, explicit endings, and unexpected departures with durable PostgreSQL call and participant records.
+- Sequence the browser's call-end acknowledgement before leaving the signaling room so terminal call state is recorded deterministically.
+- Verify automatic call/QoS persistence and authenticated-host-to-anonymous-guest Coturn relay with real Playwright browser calls.
+
 ## 0.9.5
 
 - Add Playwright and managed Chromium configuration for deterministic WebRTC browser testing with fake microphones.

@@ -12,6 +12,10 @@ import { assessCallQuality } from './metrics/quality.js';
 import { verifyAccessToken } from './auth/tokens.js';
 import { configuredOrigins } from './security.js';
 import { logEvent } from './logger.js';
+import {
+  NullRealtimeCallLifecycle,
+  type RealtimeCallLifecycle,
+} from './calls/realtimeLifecycle.js';
 
 const ROOM_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const roomIdSchema = z
@@ -138,6 +142,7 @@ export function attachSignaling(
   state: RealtimeStateStore = new MemoryRealtimeStateStore(),
   metrics: MetricRepository = new NullMetricRepository(),
   security: SignalingSecurityOptions = {},
+  calls: RealtimeCallLifecycle = new NullRealtimeCallLifecycle(),
 ): SignalingServer {
   const allowedOrigins = new Set(
     security.allowedOrigins ?? configuredOrigins(),
@@ -237,10 +242,24 @@ export function attachSignaling(
       void operation().catch((error: unknown) => fail(ack, error));
     };
 
+    const syncCall = async (roomId: string, operation: () => Promise<void>) => {
+      try {
+        await operation();
+      } catch (error) {
+        logEvent(
+          'warn',
+          'realtime_call_sync_failed',
+          { roomId, socketId: socket.id },
+          error,
+        );
+      }
+    };
+
     const notifyLeft = async (socketId: string, roomIds: string[]) => {
       for (const roomId of roomIds) {
         await socket.leave(roomId);
         io.to(roomId).emit('peer-left', { roomId, socketId });
+        await syncCall(roomId, () => calls.ended(roomId, 'FAILED'));
         logEvent('info', 'room_left', { socketId, roomId });
       }
     };
@@ -298,6 +317,18 @@ export function attachSignaling(
         await state.setCallStatus(roomId, 'RINGING');
         await socket.join(roomId);
         const resumeToken = await issueResumeToken(roomId);
+        const hostSocketId = members.find(
+          (memberSocketId) => memberSocketId !== socket.id,
+        );
+        const callerId = hostSocketId
+          ? (io.sockets.sockets.get(hostSocketId)?.data.userId as
+              string | undefined)
+          : undefined;
+        const receiverId = socket.data.userId as string | undefined;
+        if (callerId && receiverId)
+          await syncCall(roomId, () =>
+            calls.peerJoined(roomId, callerId, receiverId),
+          );
         socket.to(roomId).emit('peer-joined', { roomId, socketId: socket.id });
         logEvent('info', 'room_joined', { socketId: socket.id, roomId });
         ack({ ok: true, roomId, resumeToken });
@@ -413,6 +444,11 @@ export function attachSignaling(
           await state.setCallStatus(
             roomId,
             event === 'call-start' ? 'CONNECTED' : 'ENDED',
+          );
+          await syncCall(roomId, () =>
+            event === 'call-start'
+              ? calls.connected(roomId)
+              : calls.ended(roomId, 'ENDED'),
           );
           socket.to(roomId).emit(event, { roomId, from: socket.id });
           ack({ ok: true, roomId });

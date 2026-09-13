@@ -2,6 +2,7 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import { io as createClient, type Socket } from 'socket.io-client';
 import { attachSignaling, type SignalingServer } from './signaling.js';
 import { createAccessToken } from './auth/tokens.js';
+import type { RealtimeCallLifecycle } from './calls/realtimeLifecycle.js';
 
 type Ack = {
   ok: boolean;
@@ -14,6 +15,7 @@ type Ack = {
 describe('Socket.IO signaling', () => {
   let httpServer: HttpServer;
   let signaling: SignalingServer;
+  let callLifecycle: jest.Mocked<RealtimeCallLifecycle>;
   let url: string;
   const clients: Socket[] = [];
 
@@ -21,7 +23,18 @@ describe('Socket.IO signaling', () => {
     process.env.JWT_ACCESS_SECRET = 'test-access-secret';
     process.env.SOCKET_RATE_LIMIT_MAX = '3';
     httpServer = createServer();
-    signaling = attachSignaling(httpServer);
+    callLifecycle = {
+      peerJoined: jest.fn().mockResolvedValue(undefined),
+      connected: jest.fn().mockResolvedValue(undefined),
+      ended: jest.fn().mockResolvedValue(undefined),
+    };
+    signaling = attachSignaling(
+      httpServer,
+      undefined,
+      undefined,
+      {},
+      callLifecycle,
+    );
     await new Promise<void>((resolve) =>
       httpServer.listen(0, '127.0.0.1', resolve),
     );
@@ -258,6 +271,11 @@ describe('Socket.IO signaling', () => {
 
   it('relays call lifecycle events', async () => {
     const { first, second, roomId } = await joinedPair();
+    expect(callLifecycle.peerJoined).toHaveBeenCalledWith(
+      roomId,
+      'user-1',
+      'user-2',
+    );
     for (const event of ['call-start', 'call-end']) {
       const received = new Promise<Record<string, unknown>>((resolve) =>
         second.once(event, resolve),
@@ -268,6 +286,8 @@ describe('Socket.IO signaling', () => {
         event === 'call-start' ? 'CONNECTED' : 'ENDED',
       );
     }
+    expect(callLifecycle.connected).toHaveBeenCalledWith(roomId);
+    expect(callLifecycle.ended).toHaveBeenCalledWith(roomId, 'ENDED');
   });
 
   it('buffers and relays validated QoS metrics', async () => {

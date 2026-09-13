@@ -663,15 +663,10 @@ export function useWebRtcCall(
   }, [muted]);
   const endCall = useCallback(() => {
     if (roomRef.current) {
-      socketRef.current?.emit(
-        'call-end',
-        { roomId: roomRef.current },
-        () => undefined,
-      );
-      socketRef.current?.emit(
-        'leave-room',
-        { roomId: roomRef.current },
-        () => undefined,
+      const socket = socketRef.current;
+      const roomId = roomRef.current;
+      socket?.emit('call-end', { roomId }, () =>
+        socket.emit('leave-room', { roomId }, () => undefined),
       );
     }
     clearActiveCall();
