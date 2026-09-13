@@ -97,9 +97,13 @@ npm test
 npm audit --omit=dev
 cd ml-service && pytest
 docker compose config --quiet
+npx playwright install chromium
+npm run test:e2e
 ```
 
-The GitHub Actions workflow runs these gates and starts the complete Compose stack for analytics, security, and signaling-recovery integration smoke tests.
+The Playwright gate expects the Compose stack to be running. It launches two isolated Chromium sessions with fake microphones, completes a real WebRTC call, and verifies QoS and call persistence. See [the E2E testing guide](docs/e2e-testing.md).
+
+The GitHub Actions workflow runs these gates and starts the complete Compose stack for analytics, security, signaling-recovery, and browser-to-browser WebRTC integration tests.
 
 ## Repository layout
 
@@ -110,4 +114,4 @@ The GitHub Actions workflow runs these gates and starts the complete Compose sta
 - `infrastructure/coturn/` — TURN server configuration
 - `docs/` — architecture and operating notes
 
-Current release: **v0.9.4**
+Current release: **v0.9.5**

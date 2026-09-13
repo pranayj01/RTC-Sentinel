@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.9.5
+
+- Add Playwright and managed Chromium configuration for deterministic WebRTC browser testing with fake microphones.
+- Exercise two isolated signed-in browser sessions through room creation, joining, SDP/ICE negotiation, connection, QoS generation, and call termination.
+- Verify the E2E call lifecycle and generated QoS metrics are persisted in PostgreSQL and visible to both authorized participants.
+- Fix the live browser QoS contract so client capture timestamps pass strict validation while the server retains authoritative persistence timestamps.
+- Retain screenshots, video, traces, and an HTML report for failed browser tests.
+- Run the browser-to-browser WebRTC test against the complete Docker Compose stack in GitHub Actions.
+
 ## 0.9.4
 
 - Recover active rooms after temporary WebSocket loss or browser refresh using short-lived, rotating room-resume tokens.

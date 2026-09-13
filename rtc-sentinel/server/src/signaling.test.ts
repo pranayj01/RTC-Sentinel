@@ -273,6 +273,7 @@ describe('Socket.IO signaling', () => {
   it('buffers and relays validated QoS metrics', async () => {
     const { first, second, roomId } = await joinedPair();
     const metric = {
+      timestamp: '2026-09-13T14:00:00.000Z',
       rtt: 82,
       jitter: 11,
       packetsSent: 120,
@@ -292,9 +293,16 @@ describe('Socket.IO signaling', () => {
     await expect(
       emitAck(first, 'qos-metric', { roomId, metric }),
     ).resolves.toMatchObject({ ok: true, persisted: false });
-    await expect(received).resolves.toMatchObject({ roomId, metric });
+    await expect(received).resolves.toMatchObject({
+      roomId,
+      metric: {
+        ...metric,
+        timestamp: expect.not.stringMatching(metric.timestamp),
+      },
+    });
+    const { timestamp: _clientTimestamp, ...measurements } = metric;
     await expect(signaling.state.getRecentMetrics(roomId)).resolves.toEqual([
-      expect.objectContaining(metric),
+      expect.objectContaining({ ...measurements, timestamp: expect.any(Date) }),
     ]);
   });
 

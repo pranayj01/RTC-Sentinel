@@ -8,5 +8,9 @@ coverage/
 .venv/
 __pycache__/
 .pytest_cache/
+playwright-report/
+test-results/
+blob-report/
+debug.log
 *.py[cod]
 .DS_Store

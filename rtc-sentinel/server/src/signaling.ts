@@ -54,6 +54,7 @@ const metricSchema = roomSchema
   .extend({
     metric: z
       .object({
+        timestamp: z.string().datetime().optional(),
         rtt: z.number().finite().min(0).nullable(),
         jitter: z.number().finite().min(0).nullable(),
         packetsSent: count,
