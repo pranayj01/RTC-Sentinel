@@ -594,6 +594,11 @@ function CallWorkspace({
             </div>
           </div>
         )}
+        {call.recoveryMessage && (
+          <p role="status" className="recovery-message">
+            {call.recoveryMessage}
+          </p>
+        )}
         {call.error && (
           <p role="alert" className="error">
             {call.error}
@@ -607,7 +612,22 @@ function CallWorkspace({
 
 export function App() {
   const auth = useAuth();
-  const [guest, setGuest] = useState(false);
+  const [guest, setGuest] = useState(
+    () => sessionStorage.getItem('rtc-sentinel.guest-mode') === '1',
+  );
+  useEffect(() => {
+    if (!auth.user) return;
+    sessionStorage.removeItem('rtc-sentinel.guest-mode');
+    setGuest(false);
+  }, [auth.user]);
+  const enterGuest = () => {
+    sessionStorage.setItem('rtc-sentinel.guest-mode', '1');
+    setGuest(true);
+  };
+  const exitGuest = () => {
+    sessionStorage.removeItem('rtc-sentinel.guest-mode');
+    setGuest(false);
+  };
   if (auth.loading) {
     return (
       <main className="shell">
@@ -619,13 +639,13 @@ export function App() {
     );
   }
   if (!auth.user && !guest)
-    return <AuthenticationPanel auth={auth} onGuest={() => setGuest(true)} />;
+    return <AuthenticationPanel auth={auth} onGuest={enterGuest} />;
   return (
     <CallWorkspace
       user={auth.user}
       accessToken={guest ? '' : auth.accessToken}
       guest={guest && !auth.user}
-      onExit={guest ? () => setGuest(false) : auth.logout}
+      onExit={guest ? exitGuest : auth.logout}
     />
   );
 }

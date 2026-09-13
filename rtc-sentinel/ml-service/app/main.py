@@ -17,7 +17,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="RTC Sentinel Analytics Service",
-    version="0.9.2",
+    version="0.9.4",
     lifespan=lifespan,
 )
 

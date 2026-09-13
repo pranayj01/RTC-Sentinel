@@ -52,6 +52,7 @@ jobs:
           curl --fail http://localhost:8000/audio/model/info | grep '"type":"machine-learning"'
           node server/scripts/analytics-smoke.mjs
           node server/scripts/security-smoke.mjs
+          node server/scripts/reliability-smoke.mjs
           docker compose exec -T postgres pg_isready -U rtc_sentinel -d rtc_sentinel
           test "$(docker compose exec -T redis redis-cli ping | tr -d '\r')" = 'PONG'
       - if: always()

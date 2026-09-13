@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.9.4
+
+- Recover active rooms after temporary WebSocket loss or browser refresh using short-lived, rotating room-resume tokens.
+- Retry Socket.IO connections with bounded acknowledgement timeouts and visible reconnecting states.
+- Detect disconnected or failed ICE connections, retry ICE negotiation, and report terminal relay failures clearly.
+- Delay peer cleanup during brief disconnects and notify the remaining peer when a participant resumes.
+- Add bounded startup retries for PostgreSQL and Redis and per-attempt timeouts and retries for ML requests.
+- Continue signaling with a mirrored in-memory state store when Redis becomes unavailable.
+- Return stable `503` responses when ML analytics is unavailable without interrupting calls or local quality scoring.
+- Add structured JSON request, lifecycle, dependency, call, room, and retry logs with request IDs.
+- Add reliability unit and integration coverage, including live transport, Redis, and ML outage checks.
+
 ## 0.9.2
 
 - Move refresh tokens into HttpOnly, SameSite cookies and keep access tokens out of browser storage.

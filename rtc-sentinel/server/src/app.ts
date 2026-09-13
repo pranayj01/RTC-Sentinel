@@ -15,6 +15,7 @@ import { HttpQualityPredictor } from './analytics/qualityClient.js';
 import { HttpAudioAnalyzer } from './analytics/audioClient.js';
 import type { AudioAnalyzer, QualityPredictor } from './analytics/types.js';
 import { applyHttpSecurity, type HttpSecurityOptions } from './security.js';
+import { logEvent, logRequests } from './logger.js';
 
 export function createApp(
   users: UserRepository = new PrismaUserRepository(prisma),
@@ -28,6 +29,7 @@ export function createApp(
   const app = express();
 
   applyHttpSecurity(app, securityOptions);
+  app.use(logRequests);
 
   app.get('/health', (_request, response) =>
     response.status(200).json({ status: 'ok' }),
@@ -67,7 +69,7 @@ export function createApp(
       });
       return;
     }
-    console.error(error);
+    logEvent('error', 'http_request_failed', {}, error);
     response.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
     });

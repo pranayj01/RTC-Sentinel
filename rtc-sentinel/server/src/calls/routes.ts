@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticate } from '../auth/middleware.js';
 import type { UserRepository } from '../auth/types.js';
 import type { CallRecord, CallRepository, CallStatus } from './types.js';
+import { logEvent } from '../logger.js';
 
 const createSchema = z
   .object({
@@ -70,6 +71,11 @@ export function createCallRouter(
         callerId,
         startedAt: now(),
       });
+      logEvent('info', 'call_created', {
+        callId: call.id,
+        roomId: call.roomId,
+        userId: callerId,
+      });
       response.status(201).json({ call });
     } catch (error) {
       next(error);
@@ -124,7 +130,14 @@ export function createCallRouter(
         });
         return;
       }
-      response.json({ call: await calls.update(call.id, { status }) });
+      const updated = await calls.update(call.id, { status });
+      logEvent('info', 'call_status_changed', {
+        callId: call.id,
+        roomId: call.roomId,
+        userId: response.locals.userId as string,
+        status,
+      });
+      response.json({ call: updated });
     } catch (error) {
       next(error);
     }
@@ -155,13 +168,18 @@ export function createCallRouter(
         0,
         Math.floor((endedAt.getTime() - call.startedAt.getTime()) / 1000),
       );
-      response.json({
-        call: await calls.update(call.id, {
-          status: 'ENDED',
-          endedAt,
-          duration,
-        }),
+      const updated = await calls.update(call.id, {
+        status: 'ENDED',
+        endedAt,
+        duration,
       });
+      logEvent('info', 'call_ended', {
+        callId: call.id,
+        roomId: call.roomId,
+        userId: response.locals.userId as string,
+        duration,
+      });
+      response.json({ call: updated });
     } catch (error) {
       next(error);
     }

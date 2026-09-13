@@ -23,7 +23,7 @@ Endpoints:
 - Python health: http://localhost:8000/health
 - Socket.IO signaling: ws://localhost:5173/socket.io
 
-Both health endpoints return `{"status":"ok"}`. The Node process verifies PostgreSQL and Redis connectivity before accepting traffic.
+Both health endpoints return `{"status":"ok"}`. PostgreSQL is required at startup; Redis is retried and then safely falls back to process-local real-time state if it remains unavailable.
 
 Analytics endpoints:
 
@@ -41,6 +41,8 @@ The ML pipeline evaluates logistic regression, random forest, and gradient boost
 Create an account or sign in to host calls and use protected ML analytics. The client keeps its short-lived access token in memory, stores the refresh token in an HttpOnly cookie, and sends the access token during the Socket.IO handshake. A guest can instead choose **Join a call as guest** and enter an existing room ID without creating an account; guests cannot create rooms or call the protected ML endpoint.
 
 See [the security model](docs/security.md) for authentication, CORS, rate limiting, validation, proxy behavior, deployment settings, and known limitations.
+
+Temporary WebSocket loss, page refreshes, and recoverable ICE failures automatically enter a visible reconnecting state. The client retries signaling, can resume an active room with a rotating short-lived token, and attempts ICE restart before ending the call. Redis and ML outages degrade independently so signaling and local deterministic quality monitoring remain available. See [the reliability guide](docs/reliability.md) for behavior, controls, and operational limitations.
 
 Open the client in two browser tabs, sign in (the same test account is sufficient), create a call in the first, then join its room ID in the second to establish a peer-to-peer audio call.
 Once connected, the dashboard samples `RTCPeerConnection.getStats()` every three seconds and displays RTT, jitter, packet loss, bitrate, packets, codec, audio level, candidate type, and an explainable `Excellent` through `Critical` quality rating. See [the quality-engine rules](docs/quality-engine.md).
@@ -97,7 +99,7 @@ cd ml-service && pytest
 docker compose config --quiet
 ```
 
-The GitHub Actions workflow runs these gates and starts the complete Compose stack for analytics and security integration smoke tests.
+The GitHub Actions workflow runs these gates and starts the complete Compose stack for analytics, security, and signaling-recovery integration smoke tests.
 
 ## Repository layout
 
@@ -108,4 +110,4 @@ The GitHub Actions workflow runs these gates and starts the complete Compose sta
 - `infrastructure/coturn/` — TURN server configuration
 - `docs/` — architecture and operating notes
 
-Current release: **v0.9.2**
+Current release: **v0.9.4**

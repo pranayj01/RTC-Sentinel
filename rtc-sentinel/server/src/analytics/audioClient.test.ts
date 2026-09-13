@@ -30,7 +30,7 @@ describe('HTTP audio analyzer', () => {
       ok: true,
       json: async () => analysis,
     } as Response);
-    const analyzer = new HttpAudioAnalyzer('http://analytics:8000', 100);
+    const analyzer = new HttpAudioAnalyzer('http://analytics:8000', 100, 1, 0);
 
     await expect(analyzer.analyze(chunk)).resolves.toEqual(analysis);
     expect(fetchMock).toHaveBeenCalledWith(
@@ -45,7 +45,19 @@ describe('HTTP audio analyzer', () => {
   ])('rejects unavailable or invalid responses', async (response) => {
     jest.spyOn(global, 'fetch').mockResolvedValue(response as Response);
     await expect(
-      new HttpAudioAnalyzer('http://analytics:8000', 100).analyze(chunk),
+      new HttpAudioAnalyzer('http://analytics:8000', 100, 1, 0).analyze(chunk),
     ).rejects.toBeInstanceOf(AudioServiceUnavailableError);
+  });
+
+  it('retries one temporary failure before returning an analysis', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValueOnce(new Error('connection reset'))
+      .mockResolvedValue({ ok: true, json: async () => analysis } as Response);
+
+    await expect(
+      new HttpAudioAnalyzer('http://analytics:8000', 100, 2, 0).analyze(chunk),
+    ).resolves.toEqual(analysis);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

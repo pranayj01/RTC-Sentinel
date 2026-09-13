@@ -41,6 +41,7 @@ const idleCall = {
   statusLabel: 'Ready',
   muted: false,
   error: '',
+  recoveryMessage: '',
   candidateType: 'discovering',
   qosMetric: null,
   qosHistory: [],
@@ -60,6 +61,7 @@ const idleCall = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  sessionStorage.clear();
   mockAuth.mockReturnValue(authenticated);
   mockCall.mockReturnValue(idleCall);
   mockPredictQuality.mockResolvedValue({
@@ -157,6 +159,7 @@ test('allows anonymous users to enter join-only guest mode', () => {
   expect(screen.queryByRole('button', { name: 'Create Call' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Join Call' })).toBeInTheDocument();
   expect(mockCall).toHaveBeenCalledWith('', true, false);
+  expect(sessionStorage.getItem('rtc-sentinel.guest-mode')).toBe('1');
 });
 
 test('offers call creation and room joining', () => {

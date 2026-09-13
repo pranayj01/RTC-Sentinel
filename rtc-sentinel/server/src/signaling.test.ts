@@ -3,7 +3,13 @@ import { io as createClient, type Socket } from 'socket.io-client';
 import { attachSignaling, type SignalingServer } from './signaling.js';
 import { createAccessToken } from './auth/tokens.js';
 
-type Ack = { ok: boolean; roomId?: string; error?: string };
+type Ack = {
+  ok: boolean;
+  roomId?: string;
+  error?: string;
+  resumeToken?: string;
+  peerPresent?: boolean;
+};
 
 describe('Socket.IO signaling', () => {
   let httpServer: HttpServer;
@@ -139,6 +145,30 @@ describe('Socket.IO signaling', () => {
     await expect(
       emitAck(guest, 'join-room', { roomId: created.roomId }),
     ).resolves.toMatchObject({ ok: true, roomId: created.roomId });
+  });
+
+  it('resumes a room with a rotating single-use token', async () => {
+    const original = await connect();
+    const replacement = await connect();
+    const created = await createRoom(original);
+
+    const resumed = await emitAck(replacement, 'resume-room', {
+      roomId: created.roomId,
+      resumeToken: created.resumeToken,
+    });
+
+    expect(resumed.ok).toBe(true);
+    expect(resumed.resumeToken).toEqual(expect.any(String));
+    expect(resumed.resumeToken).not.toBe(created.resumeToken);
+    await expect(
+      signaling.state.getRoomMembers(created.roomId!),
+    ).resolves.toEqual([replacement.id]);
+    await expect(
+      emitAck(original, 'resume-room', {
+        roomId: created.roomId,
+        resumeToken: created.resumeToken,
+      }),
+    ).resolves.toEqual({ ok: false, error: 'RESUME_INVALID' });
   });
 
   it('creates a room', async () => {

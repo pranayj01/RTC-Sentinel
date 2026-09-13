@@ -11,7 +11,12 @@ describe('HTTP quality predictor', () => {
       ok: true,
       json: async () => ({ quality: 'poor', confidence: 0.92 }),
     } as Response);
-    const predictor = new HttpQualityPredictor('http://analytics:8000', 100);
+    const predictor = new HttpQualityPredictor(
+      'http://analytics:8000',
+      100,
+      1,
+      0,
+    );
     const features = { rtt: 155, jitter: 34, packetLoss: 4.1, bitrate: 22000 };
 
     await expect(predictor.predict(features)).resolves.toEqual({
@@ -33,7 +38,7 @@ describe('HTTP quality predictor', () => {
   ])('rejects unavailable or invalid service responses', async (response) => {
     jest.spyOn(global, 'fetch').mockResolvedValue(response as Response);
     await expect(
-      new HttpQualityPredictor('http://analytics:8000', 100).predict({
+      new HttpQualityPredictor('http://analytics:8000', 100, 1, 0).predict({
         rtt: 80,
         jitter: 10,
         packetLoss: 0.5,
@@ -47,12 +52,32 @@ describe('HTTP quality predictor', () => {
       .spyOn(global, 'fetch')
       .mockRejectedValue(new Error('connection refused'));
     await expect(
-      new HttpQualityPredictor('http://analytics:8000', 100).predict({
+      new HttpQualityPredictor('http://analytics:8000', 100, 1, 0).predict({
         rtt: 80,
         jitter: 10,
         packetLoss: 0.5,
         bitrate: 48000,
       }),
     ).rejects.toBeInstanceOf(QualityServiceUnavailableError);
+  });
+
+  it('retries one temporary failure before returning a prediction', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValueOnce(new Error('connection reset'))
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({ quality: 'good', confidence: 0.8 }),
+      } as Response);
+
+    await expect(
+      new HttpQualityPredictor('http://analytics:8000', 100, 2, 0).predict({
+        rtt: 80,
+        jitter: 10,
+        packetLoss: 0.5,
+        bitrate: 48000,
+      }),
+    ).resolves.toEqual({ quality: 'good', confidence: 0.8 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

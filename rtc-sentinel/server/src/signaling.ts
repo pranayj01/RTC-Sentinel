@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import { z } from 'zod';
@@ -11,6 +11,7 @@ import type { MetricRepository } from './metrics/types.js';
 import { assessCallQuality } from './metrics/quality.js';
 import { verifyAccessToken } from './auth/tokens.js';
 import { configuredOrigins } from './security.js';
+import { logEvent } from './logger.js';
 
 const ROOM_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const roomIdSchema = z
@@ -19,6 +20,15 @@ const roomIdSchema = z
   .toUpperCase()
   .regex(/^[A-Z0-9]{6}$/);
 const roomSchema = z.object({ roomId: roomIdSchema }).strict();
+const resumeRoomSchema = roomSchema
+  .extend({
+    resumeToken: z
+      .string()
+      .min(32)
+      .max(128)
+      .regex(/^[A-Za-z0-9_-]+$/),
+  })
+  .strict();
 const sessionDescription = (type: 'offer' | 'answer') =>
   z
     .object({
@@ -65,6 +75,8 @@ type Ack = (response: {
   roomId?: string;
   error?: string;
   persisted?: boolean;
+  peerPresent?: boolean;
+  resumeToken?: string;
 }) => void;
 
 export interface SignalingServer {
@@ -76,6 +88,7 @@ export interface SignalingSecurityOptions {
   allowedOrigins?: string[];
   eventRateLimit?: number;
   rateLimitWindowMs?: number;
+  disconnectGraceMs?: number;
 }
 
 class SocketEventLimiter {
@@ -141,10 +154,20 @@ export function attachSignaling(
       ? configuredWindowMs
       : 60_000);
   const eventLimiter = new SocketEventLimiter(eventLimit, eventWindowMs);
+  const disconnectGraceMs =
+    security.disconnectGraceMs ??
+    (process.env.NODE_ENV === 'test'
+      ? 0
+      : Math.max(0, Number(process.env.SOCKET_DISCONNECT_GRACE_MS ?? 15_000)));
+  const pendingDisconnects = new Map<string, NodeJS.Timeout>();
   const originAllowed = (origin: string | undefined) =>
     !origin || allowedOrigins.has(origin);
   const io = new Server(httpServer, {
     maxHttpBufferSize: 64 * 1_024,
+    connectionStateRecovery: {
+      maxDisconnectionDuration: disconnectGraceMs,
+      skipMiddlewares: false,
+    },
     cors: {
       origin: [...allowedOrigins],
       credentials: true,
@@ -177,11 +200,29 @@ export function attachSignaling(
   });
 
   io.on('connection', (socket) => {
+    const pendingDisconnect = pendingDisconnects.get(socket.id);
+    if (pendingDisconnect) {
+      clearTimeout(pendingDisconnect);
+      pendingDisconnects.delete(socket.id);
+    }
     const ready = state.registerSocket(socket.id);
-    console.log(`${socket.id} connected`);
+    logEvent(
+      'info',
+      socket.recovered ? 'socket_recovered' : 'socket_connected',
+      {
+        socketId: socket.id,
+        userId: socket.data.userId as string | undefined,
+        guest: socket.data.guest === true,
+      },
+    );
 
     const fail = (ack: Ack, error: unknown) => {
-      console.error('Realtime state operation failed', error);
+      logEvent(
+        'error',
+        'realtime_state_operation_failed',
+        { socketId: socket.id },
+        error,
+      );
       if (typeof ack === 'function')
         ack({ ok: false, error: 'STATE_UNAVAILABLE' });
     };
@@ -199,13 +240,19 @@ export function attachSignaling(
       for (const roomId of roomIds) {
         await socket.leave(roomId);
         io.to(roomId).emit('peer-left', { roomId, socketId });
-        console.log(`${socketId} left ${roomId}`);
+        logEvent('info', 'room_left', { socketId, roomId });
       }
     };
 
     const leaveAllRooms = async () => {
       await ready;
       await notifyLeft(socket.id, await state.leaveAllRooms(socket.id));
+    };
+
+    const issueResumeToken = async (roomId: string): Promise<string> => {
+      const token = randomBytes(32).toString('base64url');
+      await state.setRoomResumeToken(roomId, socket.id, token);
+      return token;
     };
 
     socket.on('create-room', (ack: Ack) =>
@@ -217,8 +264,9 @@ export function attachSignaling(
         await leaveAllRooms();
         const roomId = await reserveRoom(state, socket.id);
         await socket.join(roomId);
-        console.log(`${socket.id} joined ${roomId}`);
-        ack({ ok: true, roomId });
+        const resumeToken = await issueResumeToken(roomId);
+        logEvent('info', 'room_created', { socketId: socket.id, roomId });
+        ack({ ok: true, roomId, resumeToken });
       }),
     );
 
@@ -248,9 +296,52 @@ export function attachSignaling(
         }
         await state.setCallStatus(roomId, 'RINGING');
         await socket.join(roomId);
+        const resumeToken = await issueResumeToken(roomId);
         socket.to(roomId).emit('peer-joined', { roomId, socketId: socket.id });
-        console.log(`${socket.id} joined ${roomId}`);
-        ack({ ok: true, roomId });
+        logEvent('info', 'room_joined', { socketId: socket.id, roomId });
+        ack({ ok: true, roomId, resumeToken });
+      }),
+    );
+
+    socket.on('resume-room', (payload: unknown, ack: Ack) =>
+      run(ack, async () => {
+        const parsed = resumeRoomSchema.safeParse(payload);
+        if (!parsed.success) {
+          ack({ ok: false, error: 'INVALID_ROOM' });
+          return;
+        }
+        await ready;
+        const { resumeToken: previousResumeToken } = parsed.data;
+        const roomId = parsed.data.roomId.toUpperCase();
+        const resumed = await state.resumeRoom(
+          roomId,
+          previousResumeToken,
+          socket.id,
+        );
+        if (resumed.result !== 'JOINED' || !resumed.previousSocketId) {
+          ack({ ok: false, error: resumed.result });
+          return;
+        }
+        const { previousSocketId } = resumed;
+        const pending = pendingDisconnects.get(previousSocketId);
+        if (pending) {
+          clearTimeout(pending);
+          pendingDisconnects.delete(previousSocketId);
+        }
+        await socket.join(roomId);
+        const resumeToken = await issueResumeToken(roomId);
+        const peerPresent = (await state.getRoomMembers(roomId)).length > 1;
+        socket.to(roomId).emit('peer-reconnected', {
+          roomId,
+          socketId: socket.id,
+        });
+        logEvent('info', 'room_resumed', {
+          socketId: socket.id,
+          previousSocketId,
+          roomId,
+          peerPresent,
+        });
+        ack({ ok: true, roomId, peerPresent, resumeToken });
       }),
     );
 
@@ -291,7 +382,11 @@ export function attachSignaling(
             signal: parsed.data.signal,
             from: socket.id,
           });
-          console.log(`${event} relayed in ${roomId}`);
+          logEvent('debug', 'signal_relayed', {
+            socketId: socket.id,
+            roomId,
+            signalType: event,
+          });
           ack({ ok: true, roomId });
         }),
       );
@@ -351,15 +446,32 @@ export function attachSignaling(
       }),
     );
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
       eventLimiter.remove(socket.id);
-      void ready
-        .then(() => state.unregisterSocket(socket.id))
-        .then((roomIds) => notifyLeft(socket.id, roomIds))
-        .catch((error: unknown) =>
-          console.error('Realtime disconnect cleanup failed', error),
-        );
-      console.log(`${socket.id} disconnected`);
+      const cleanup = () => {
+        pendingDisconnects.delete(socket.id);
+        void ready
+          .then(() => state.unregisterSocket(socket.id))
+          .then((roomIds) => notifyLeft(socket.id, roomIds))
+          .catch((error: unknown) =>
+            logEvent(
+              'error',
+              'realtime_disconnect_cleanup_failed',
+              { socketId: socket.id },
+              error,
+            ),
+          );
+      };
+      if (disconnectGraceMs > 0) {
+        const timer = setTimeout(cleanup, disconnectGraceMs);
+        timer.unref();
+        pendingDisconnects.set(socket.id, timer);
+      } else cleanup();
+      logEvent('info', 'socket_disconnected', {
+        socketId: socket.id,
+        reason,
+        cleanupDelayMs: disconnectGraceMs,
+      });
     });
   });
 
