@@ -2,6 +2,8 @@
 
 RTC Sentinel is a WebRTC monitoring platform with browser-to-browser audio, Socket.IO signaling, authenticated call storage, Redis real-time state, live WebRTC QoS metrics, deterministic call-quality scoring, and Python ML analytics for network quality and audio conditions. The React, Express, FastAPI, PostgreSQL, Redis, and Coturn services run together through Docker Compose.
 
+See [the résumé claim evidence matrix](docs/resume-claim-evidence.md) for direct implementation and test references.
+
 ## Prerequisites
 
 - Node.js 22+
@@ -44,7 +46,7 @@ See [the security model](docs/security.md) for authentication, CORS, rate limiti
 
 Temporary WebSocket loss, page refreshes, and recoverable ICE failures automatically enter a visible reconnecting state. The client retries signaling, can resume an active room with a rotating short-lived token, and attempts ICE restart before ending the call. Redis and ML outages degrade independently so signaling and local deterministic quality monitoring remain available. See [the reliability guide](docs/reliability.md) for behavior, controls, and operational limitations.
 
-Open the client in two browser tabs, sign in (the same test account is sufficient), create a call in the first, then join its room ID in the second to establish a peer-to-peer audio call.
+Open the client in two browser tabs, sign in, create a call in the first, then join its room ID in the second to establish a peer-to-peer audio call. The same account is sufficient for a quick media test; use two different accounts when testing automatic private call-history persistence.
 Once connected, the dashboard samples `RTCPeerConnection.getStats()` every three seconds and displays RTT, jitter, packet loss, bitrate, packets, codec, audio level, candidate type, and an explainable `Excellent` through `Critical` quality rating. See [the quality-engine rules](docs/quality-engine.md).
 
 For signed-in users, the call dashboard also sends complete live samples through the authenticated Node analytics endpoint and displays the ML class with its probability confidence beside the deterministic score. Confidence represents the classifier's certainty about its label; it is not a percentage score for the call. Guest calls retain the local deterministic score without sending samples to the ML API.
@@ -97,9 +99,13 @@ npm test
 npm audit --omit=dev
 cd ml-service && pytest
 docker compose config --quiet
+npx playwright install chromium
+npm run test:e2e
 ```
 
-The GitHub Actions workflow runs these gates and starts the complete Compose stack for analytics, security, and signaling-recovery integration smoke tests.
+The Playwright gate expects the Compose stack to be running. It verifies an automatically persisted signed-in WebRTC call with QoS records, then verifies a host and anonymous guest can connect through forced Coturn relay. See [the E2E testing guide](docs/e2e-testing.md).
+
+The GitHub Actions workflow runs these gates and starts the complete Compose stack for analytics, security, signaling-recovery, and browser-to-browser WebRTC integration tests.
 
 ## Repository layout
 
@@ -110,4 +116,4 @@ The GitHub Actions workflow runs these gates and starts the complete Compose sta
 - `infrastructure/coturn/` — TURN server configuration
 - `docs/` — architecture and operating notes
 
-Current release: **v0.9.4**
+Current release: **v0.9.5**

@@ -41,6 +41,11 @@ jobs:
       COOKIE_SECURE: 'false'
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
       - run: docker compose config --quiet
       - run: docker compose up --build --wait --wait-timeout 180
       - name: Smoke test services and dependencies
@@ -55,5 +60,7 @@ jobs:
           node server/scripts/reliability-smoke.mjs
           docker compose exec -T postgres pg_isready -U rtc_sentinel -d rtc_sentinel
           test "$(docker compose exec -T redis redis-cli ping | tr -d '\r')" = 'PONG'
+      - name: Browser-to-browser WebRTC E2E test
+        run: npm run test:e2e
       - if: always()
         run: docker compose down --volumes

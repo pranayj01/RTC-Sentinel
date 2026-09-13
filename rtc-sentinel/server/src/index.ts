@@ -15,6 +15,7 @@ import {
 import { PrismaMetricRepository } from './metrics/metricRepository.js';
 import { validateProductionSecurity } from './security.js';
 import { logEvent } from './logger.js';
+import { PrismaRealtimeCallLifecycle } from './calls/realtimeLifecycle.js';
 
 const port = Number(process.env.PORT ?? 3000);
 
@@ -46,6 +47,8 @@ async function start(): Promise<void> {
     server,
     realtimeState,
     new PrismaMetricRepository(prisma),
+    {},
+    new PrismaRealtimeCallLifecycle(prisma),
   );
   server.listen(port, () => {
     logEvent('info', 'api_started', {
